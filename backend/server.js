@@ -10,6 +10,9 @@
 
 'use strict';
 
+// Load .env from project root before anything else reads process.env
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+
 const fs   = require('fs');
 const os   = require('os');
 const path = require('path');

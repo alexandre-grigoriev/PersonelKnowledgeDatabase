@@ -1,124 +1,213 @@
----
+# Installation Guide
 
-## Export / Import d’une Knowledge Base (partage)
-
-Pour partager une base de connaissances créée avec d’autres utilisateurs ou ordinateurs, utilisez la procédure d’export/import :
-
-### Export (sauvegarde ou partage)
-1. **Fermez l’application** pour garantir l’intégrité des fichiers.
-2. **Localisez le dossier de la KB** dans `data/[nom-de-la-KB]/`.
-3. **Compressez** ce dossier (ZIP recommandé) pour faciliter le transfert.
-4. **Transférez** l’archive (clé USB, cloud, email, etc.) au destinataire.
-
-### Import (restauration ou ajout)
-1. **Décompressez** l’archive reçue sur le nouvel ordinateur.
-2. **Copiez** le dossier extrait dans le répertoire `data/` de l’application.
-3. **Redémarrez l’application** : la KB importée sera détectée automatiquement.
-
-### (À venir) Export/Import automatisé
-- Des fonctions d’export/import intégrées à l’application pourront être ajoutées pour simplifier ces étapes (menu ou bouton « Exporter/Importer »).
-
-**Remarques :**
-- Toujours fermer l’application avant toute opération d’export/import.
-- Pour partager plusieurs KB, répétez la procédure pour chaque dossier.
-# INSTALLATION.md
-
-This guide explains how to install and set up the application on both **Windows** and **Mac**. All dependencies (Node.js, Neo4j, app files, and Node.js packages) will be installed for a ready-to-use experience.
+Step-by-step setup for **Windows** and **Mac** — development mode (backend only, no Electron build required).
 
 ---
 
-## Windows Installation (setup.exe)
+## Prerequisites
 
-### End Users
-1. **Download** the provided `setup.exe` from the official release or build it yourself (see below).
-2. **Run** `setup.exe` as Administrator.
-3. The installer will automatically:
-   - Check for Node.js and install it if missing
-   - Install Neo4j Community Edition (or unpack embedded version)
-   - Copy all application files
-   - Run `npm install` to fetch dependencies
-   - Optionally, initialize Neo4j database and create shortcuts
-4. **Launch** the application from the desktop/start menu shortcut.
-
-### Developers: Building the Installer
-1. **Prepare dependencies:**
-   - Download Node.js Windows installer (.msi)
-   - Download Neo4j Community Edition (.zip or .exe)
-   - Prepare your application files
-2. **Write an NSIS or Inno Setup script** to automate:
-   - Node.js installation (silent mode)
-   - Neo4j installation/unpacking
-   - Copying app files
-   - Running `npm install`
-   - Creating shortcuts
-3. **Build** the installer using NSIS or Inno Setup.
+| Tool | Version | Notes |
+|------|---------|-------|
+| Node.js | 20+ | [nodejs.org](https://nodejs.org) |
+| Python | 3.9+ | [python.org](https://python.org) — needed for PDF parsing |
+| Neo4j Community | 5.x | [neo4j.com/download-center/#community](https://neo4j.com/download-center/#community) — extract the ZIP anywhere |
+| Git | any | to clone the repo |
 
 ---
 
-## Mac Installation
+## 1 — Clone the repository
 
-### End Users
-1. **Download** the provided `.pkg` installer, `.dmg` (for Electron apps), or shell script (if available).
-2. **Run** the installer or script. It will:
-   - Check for Node.js and install it if missing (or prompt you)
-   - Install Neo4j Community Edition (or prompt you)
-   - Copy all application files
-   - Run `npm install` to fetch dependencies
-   - Optionally, initialize Neo4j database and create shortcuts
-3. **Launch** the application from Applications or via shortcut.
+```bash
+git clone https://github.com/alexandre-grigoriev/PersonelKnowledgeDatabase.git
+cd PersonelKnowledgeDatabase
+```
 
-#### Manual Installation (if no installer provided)
-1. **Install Node.js:**
-   - `brew install node` (recommended)
-   - Or download from [nodejs.org](https://nodejs.org/)
-2. **Install Neo4j:**
-   - `brew install neo4j` (recommended)
-   - Or download from [neo4j.com](https://neo4j.com/download/)
-3. **Clone or download the app:**
-   - `git clone <repo-url>` or download and unzip
-4. **Install dependencies:**
-   - `cd <app-folder>`
-   - `npm install`
-5. **Start Neo4j** (if not embedded):
-   - `neo4j start` (Homebrew) or run the Neo4j Desktop app
-6. **Run the application:**
-   - `npm start` or as described in the README
+---
+
+## 2 — Install Node.js dependencies
+
+```bash
+npm install
+```
+
+---
+
+## 3 — Install Python dependencies
+
+```bash
+pip install pdfplumber
+```
+
+> On Windows, use `pip` (not `pip3`). If `pip` is not found, try `python -m pip install pdfplumber`.
+
+---
+
+## 4 — Configure environment variables
+
+Copy the example file and fill in your values:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env`:
+
+```env
+# Required — get a free key at https://aistudio.google.com/app/apikey
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Path to the Neo4j installation root (the folder that contains bin/, conf/, lib/)
+# Windows example:
+SKB_NEO4J_BIN_DIR=E:\Neo4J
+# Mac/Linux example:
+# SKB_NEO4J_BIN_DIR=/usr/local/opt/neo4j
+
+# Python binary name — use 'python' on Windows, 'python3' on Mac/Linux
+SKB_PYTHON=python
+
+# Pretty logs in development
+NODE_ENV=development
+```
+
+**Important:** `SKB_NEO4J_BIN_DIR` must point to the **root** of the Neo4j installation — the folder that directly contains `bin/`. On Windows this is usually the folder you extracted the zip into (e.g. `E:\Neo4J`, not `E:\Neo4J\bin`).
+
+---
+
+## 5 — Start the backend server
+
+```bash
+npm start
+```
+
+You should see:
+
+```
+{"level":"info","msg":"server listening","port":3000}
+```
+
+The server is now running at **http://localhost:3000**.
+
+> **First run note:** No databases exist yet. The server starts cleanly with no Neo4j processes.
+
+---
+
+## 6 — Create your first Knowledge Base
+
+Neo4j **starts automatically** when you create a KB — you never touch it directly.
+
+Use any HTTP client (curl, Postman, your browser's fetch console):
+
+```bash
+curl -X POST http://localhost:3000/api/kb \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My First KB", "description": "Scientific papers", "color": "#3B8BD4"}'
+```
+
+Response (after ~30–60 s while Neo4j boots):
+
+```json
+{
+  "id": "a3f2bc91-4d1e-4a2b-b3c0-1234567890ab",
+  "name": "My First KB",
+  "description": "Scientific papers",
+  "color": "#3B8BD4",
+  "createdAt": "2026-04-29T10:00:00.000Z"
+}
+```
+
+Save the `id` — that is your **KB reference** for all subsequent API calls.
+
+### What happens under the hood
+
+1. A directory `data/{kb-id}/` is created with `pdfs/`, `neo4j/`, `metadata.db`
+2. A `neo4j.conf` is written for this KB (isolated port, bolt-only, auth disabled)
+3. Neo4j is spawned on the next free port in range 7687–7787
+4. All graph constraints and indexes are initialised (`scripts/initNeo4j.js`)
+
+---
+
+## 7 — Verify everything is working
+
+```bash
+# List all KBs
+curl http://localhost:3000/api/kb
+
+# Stats for a specific KB (replace the id)
+curl http://localhost:3000/api/kb/a3f2bc91-4d1e-4a2b-b3c0-1234567890ab/stats
+```
+
+---
+
+## 8 — Ingest a PDF
+
+```bash
+curl -X POST http://localhost:3000/api/ingest \
+  -F "pdf=@/path/to/paper.pdf" \
+  -F "kbId=a3f2bc91-4d1e-4a2b-b3c0-1234567890ab" \
+  -F 'meta={"title":"My Paper","authors":["Smith J."],"year":2023}'
+```
+
+Response:
+
+```json
+{ "jobId": "job_xxx", "docId": "sha256...", "status": "queued" }
+```
+
+Poll the job until `status` is `done`:
+
+```bash
+curl "http://localhost:3000/api/ingest/jobs/job_xxx?kbId=a3f2bc91-..."
+```
+
+---
+
+## 9 — Query the knowledge base
+
+```bash
+curl -X POST http://localhost:3000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "What are the tensile properties of 7075-T6?",
+    "kbId": "a3f2bc91-4d1e-4a2b-b3c0-1234567890ab"
+  }'
+```
 
 ---
 
 ## Troubleshooting
-- Ensure you have Administrator rights on Windows
-- On Mac, you may need to allow the installer in Security & Privacy
-- Neo4j may require Java (usually bundled)
-- If `npm install` fails, check your internet connection and Node.js version
+
+| Symptom | Fix |
+|---------|-----|
+| `Error: GEMINI_API_KEY is required` | Add `GEMINI_API_KEY` to `.env` |
+| `pdfParser: failed to spawn "python"` | Set `SKB_PYTHON=python3` (Mac/Linux) or install Python |
+| `pdfplumber` not found | Run `pip install pdfplumber` |
+| `startNeo4jForKb` times out | Check `SKB_NEO4J_BIN_DIR` points to Neo4j root, not `bin/` subfolder |
+| Neo4j port already in use | Another KB already owns port 7687 — the next KB gets 7688, etc. |
+| `better-sqlite3` build error on `npm install` | Run `npm install --build-from-source` or install Visual Studio Build Tools |
 
 ---
 
-## See Also
-- [AGENTS.md](AGENTS.md) — Agent instructions and conventions
-- [CLAUDE.md](CLAUDE.md) — Project vision and stack
-- [docs/INSTALLER.md](docs/INSTALLER.md) — Installer script details (if present)
+## Data directory
 
----
+All KB data is stored in `data/` (git-ignored):
 
-## Transférer une Knowledge Base vers un autre ordinateur
+```
+data/
+└── {kb-id}/
+    ├── kb.json          ← KB metadata (name, port, counts)
+    ├── pdfs/            ← archived source PDFs (source of truth)
+    │   └── index.json
+    ├── metadata.db      ← SQLite: documents, chunks, jobs
+    └── neo4j/           ← Neo4j data for this KB
+        ├── conf/
+        ├── data/
+        └── logs/
+```
 
-Pour transférer une base de connaissances (Knowledge Base) complète d’un ordinateur à l’autre :
+To **delete** a KB, call `DELETE /api/kb/{id}` with `{"confirm":true}` — it stops Neo4j, removes all files, and cleans up SQLite.
 
-1. **Repérez le dossier de la KB**
-   - Par défaut, chaque KB est stockée dans le dossier `data/[nom-de-la-KB]/` (PDFs, base SQLite, données Neo4j).
+To **rebuild** a KB from its archived PDFs (e.g. after changing chunking strategy):
 
-2. **Copiez le dossier**
-   - Copiez tout le dossier `data/[nom-de-la-KB]/` sur un support externe (clé USB, disque dur, cloud, etc.).
-
-3. **Collez sur le nouvel ordinateur**
-   - Installez l’application et toutes les dépendances comme décrit ci-dessus.
-   - Collez le dossier KB dans le répertoire `data/` de l’installation sur le nouvel ordinateur.
-
-4. **Redémarrez l’application**
-   - La KB transférée sera automatiquement détectée et utilisable.
-
-**Remarques :**
-- Assurez-vous que l’application n’est pas en cours d’exécution lors de la copie.
-- Si la structure du dossier diffère, adaptez le chemin selon la configuration locale.
-- Pour plusieurs KB, répétez l’opération pour chaque dossier `data/[nom-de-la-KB]/`.
+```bash
+node scripts/rebuildKb.js --kbId a3f2bc91-4d1e-4a2b-b3c0-1234567890ab
+```
