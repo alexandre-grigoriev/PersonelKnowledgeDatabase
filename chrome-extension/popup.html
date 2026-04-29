@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scientific KB Clipper</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { width: 340px; min-height: 180px; font-family: system-ui, sans-serif; font-size: 13px; color: #1a1a1a; background: #fff; padding: 12px; }
+    header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb; }
+    header img { width: 20px; height: 20px; }
+    header span { font-weight: 600; font-size: 14px; flex: 1; }
+    #status-dot { width: 8px; height: 8px; border-radius: 50%; background: #d1d5db; }
+    #status-dot.ok { background: #22c55e; }
+    #status-dot.err { background: #ef4444; }
+    section { margin-bottom: 10px; }
+    label { display: block; font-size: 11px; color: #6b7280; margin-bottom: 4px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+    select { width: 100%; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: #f9fafb; }
+    #scan-result { font-size: 12px; color: #374151; background: #f3f4f6; border-radius: 6px; padding: 8px; min-height: 32px; }
+    #actions { display: flex; gap: 8px; }
+    button { flex: 1; padding: 8px 10px; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 500; }
+    button.primary   { background: #2563eb; color: #fff; }
+    button.primary:hover   { background: #1d4ed8; }
+    button.secondary { background: #e5e7eb; color: #374151; }
+    button.secondary:hover { background: #d1d5db; }
+    button:disabled  { opacity: 0.5; cursor: not-allowed; }
+    #progress { background: #f3f4f6; border-radius: 6px; padding: 10px; }
+    .progress-bar { background: #e5e7eb; border-radius: 4px; height: 6px; overflow: hidden; margin-bottom: 6px; }
+    #progress-fill { background: #2563eb; height: 100%; width: 0%; transition: width 0.4s; }
+    #progress-label { font-size: 11px; color: #6b7280; }
+    .error-msg { color: #dc2626; font-size: 12px; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="icons/icon48.png" alt="SKB">
+    <span>Scientific KB Clipper</span>
+    <div id="status-dot" title="Backend status"></div>
+  </header>
+
+  <section id="kb-selector">
+    <label>Target knowledge base</label>
+    <select id="kb-select"><option value="">Loading…</option></select>
+  </section>
+
+  <section>
+    <label>Page scan</label>
+    <div id="scan-result">Scanning…</div>
+  </section>
+
+  <section id="actions">
+    <button id="btn-pdf"  class="primary"   style="display:none">⬇ Save PDF</button>
+    <button id="btn-text" class="secondary" style="display:none">📄 Capture page</button>
+  </section>
+
+  <section id="progress" style="display:none">
+    <div class="progress-bar"><div id="progress-fill"></div></div>
+    <div id="progress-label">Queued…</div>
+  </section>
+
+  <div id="error-msg" class="error-msg"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
