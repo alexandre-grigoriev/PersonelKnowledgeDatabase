@@ -1,39 +1,35 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createKb, deleteKb, listKbs } from './api/client'
 import type { Kb } from './types'
-import KbDashboard from './pages/KbDashboard'
 import Ingest from './pages/Ingest'
 import Query from './pages/Query'
 import Archive from './pages/Archive'
 import './App.css'
 
-type Page = 'dashboard' | 'ingest' | 'query' | 'archive'
+type Page = 'query' | 'ingest' | 'archive'
 
-const NAV: { id: Page; label: string; icon: string }[] = [
-  { id: 'query',   label: 'Query',    icon: '🔍' },
-  { id: 'ingest',  label: 'Ingest',   icon: '⬆' },
-  { id: 'archive', label: 'Archive',  icon: '📂' },
-]
-
-const SIDEBAR_DEFAULT = 260
-const SIDEBAR_MIN     = 200
-const SIDEBAR_MAX     = 440
+const SIDEBAR_MIN = 220
+const SIDEBAR_MAX = 600
 
 export default function App() {
-  const [kbs, setKbs]           = useState<Kb[]>([])
+  const [kbs, setKbs]               = useState<Kb[]>([])
   const [activeKbId, setActiveKbId] = useState<string>(localStorage.getItem('skb_active_kb') ?? '')
-  const [page, setPage]         = useState<Page>('query')
-  const [sidebarW, setSidebarW] = useState(SIDEBAR_DEFAULT)
-  const [dragging, setDragging] = useState(false)
+  const [page, setPage]             = useState<Page>('query')
+  const [sidebarWidth, setSidebarWidth] = useState(() => Math.round(window.innerWidth * 0.22))
   const [showCreate, setShowCreate] = useState(false)
+  const [kbMenuOpen, setKbMenuOpen] = useState(false)
 
-  const dragRef = useRef<{ startX: number; startW: number } | null>(null)
+  const isDragging = useRef(false)
+  const mainGridRef = useRef<HTMLElement>(null)
+  const kbMenuRef   = useRef<HTMLDivElement>(null)
+
+  // ── Load KBs ──────────────────────────────────────────────────────────────────
 
   const loadKbs = useCallback(() =>
     listKbs().then(data => {
       setKbs(data)
-      if (!activeKbId && data.length > 0) {
-        const saved = localStorage.getItem('skb_active_kb')
+      const saved = localStorage.getItem('skb_active_kb')
+      if ((!activeKbId || !data.find(k => k.id === activeKbId)) && data.length > 0) {
         const id = (saved && data.find(k => k.id === saved)) ? saved : data[0].id
         setActiveKbId(id)
         localStorage.setItem('skb_active_kb', id)
@@ -45,52 +41,112 @@ export default function App() {
   const selectKb = (id: string) => {
     setActiveKbId(id)
     localStorage.setItem('skb_active_kb', id)
+    setKbMenuOpen(false)
     setPage('query')
   }
 
-  // Splitter drag
-  const onMouseDown = (e: React.MouseEvent) => {
-    dragRef.current = { startX: e.clientX, startW: sidebarW }
-    setDragging(true)
-    e.preventDefault()
-  }
+  // ── Splitter drag (exact GD Depth) ─────────────────────────────────────────────
+
   useEffect(() => {
-    if (!dragging) return
-    const onMove = (e: MouseEvent) => {
-      if (!dragRef.current) return
-      const delta = e.clientX - dragRef.current.startX
-      setSidebarW(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, dragRef.current.startW + delta)))
+    function onMove(e: MouseEvent) {
+      if (!isDragging.current || !mainGridRef.current) return
+      const rect = mainGridRef.current.getBoundingClientRect()
+      setSidebarWidth(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, e.clientX - rect.left)))
     }
-    const onUp = () => setDragging(false)
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
-  }, [dragging])
+    function onUp() {
+      if (isDragging.current) {
+        isDragging.current = false
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+      }
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
+  }, [])
+
+  // ── Close KB menu on outside click ────────────────────────────────────────────
+
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (!kbMenuOpen) return
+      if (kbMenuRef.current && !kbMenuRef.current.contains(e.target as Node)) setKbMenuOpen(false)
+    }
+    window.addEventListener('mousedown', onDown)
+    return () => window.removeEventListener('mousedown', onDown)
+  }, [kbMenuOpen])
 
   const activeKb = kbs.find(k => k.id === activeKbId) ?? null
 
   return (
-    <div className="appRoot" style={{ userSelect: dragging ? 'none' : undefined }}>
-      {/* ── Top bar ── */}
+    <div className="appRoot">
+
+      {/* ══ TOP BAR — exact GD Depth structure ══ */}
       <header className="topBar">
-        <span className="topBarBrand">Scientific KB</span>
-        <span className="topBarSep" />
-        <button className="blueBtn" style={{ fontSize: 13 }} onClick={() => setShowCreate(true)}>
-          + New KB
-        </button>
+        <div className="topBarInner">
+
+          {/* Left: logo placeholder */}
+          <div className="brandLeft">
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+              <rect width="32" height="32" rx="8" fill="#478cd0"/>
+              <path d="M8 16h16M16 8v16" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
+            </svg>
+          </div>
+
+          {/* Centre: brand name — absolutely centred, same as GD Depth */}
+          <span className="brandName">Scientific KB</span>
+
+          {/* Right: KB selector dropdown + nav */}
+          <div className="topRight" ref={kbMenuRef}>
+            {/* KB selector */}
+            <div className="topSelectWrap">
+              <button
+                className="topSelectBtn"
+                onClick={() => setKbMenuOpen(o => !o)}
+              >
+                {activeKb && (
+                  <span className="topSelectDot" style={{ background: activeKb.color }} />
+                )}
+                <span className="topSelectLabel">KB:</span>
+                <span className="topSelectValue">{activeKb?.name ?? 'None'}</span>
+                <svg className="topSelectChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M6 9l6 6 6-6"/>
+                </svg>
+              </button>
+              {kbMenuOpen && (
+                <div className="topSelectDropdown">
+                  {kbs.map(kb => (
+                    <button
+                      key={kb.id}
+                      className={`topSelectItem ${kb.id === activeKbId ? 'topSelectItemActive' : ''}`}
+                      onClick={() => selectKb(kb.id)}
+                    >
+                      <span className="topSelectDot" style={{ background: kb.color }} />
+                      {kb.name}
+                      <span style={{ marginLeft: 'auto', fontSize: 12, color: '#9ca3af' }}>{kb.docCount}</span>
+                    </button>
+                  ))}
+                  {kbs.length > 0 && <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '4px 0' }} />}
+                  <button className="topSelectItem" onClick={() => { setKbMenuOpen(false); setShowCreate(true) }}>
+                    <span style={{ fontSize: 16, color: '#478cd0' }}>＋</span>
+                    New knowledge base…
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </header>
 
-      {/* ── Main grid ── */}
-      <div
-        className="mainGrid"
-        style={{ gridTemplateColumns: `${sidebarW}px 18px 1fr` }}
-      >
+      {/* ══ MAIN GRID — same as GD Depth ══ */}
+      <main ref={mainGridRef} className="mainGrid" style={{ gridTemplateColumns: `${sidebarWidth}px auto 1fr` }}>
+
         {/* Sidebar */}
         <aside className="sidebar">
           <div className="sidebarHeader">
             <span className="sidebarTitle">Knowledge Bases</span>
-            <button className="sidebarIconBtn" title="New KB" onClick={() => setShowCreate(true)}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <button className="iconBtn" title="New KB" onClick={() => setShowCreate(true)}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M12 5v14M5 12h14"/>
               </svg>
             </button>
@@ -98,31 +154,29 @@ export default function App() {
 
           <div className="sidebarBody">
             {kbs.length === 0 && (
-              <div className="emptyState" style={{ padding: '24px 8px' }}>
-                <div className="emptyText">No knowledge bases yet</div>
-              </div>
+              <div className="sidebarEmpty">No knowledge bases yet.<br />Create one to get started.</div>
             )}
             {kbs.map(kb => (
-              <div key={kb.id}>
+              <div key={kb.id} className="projectGroup">
                 <button
                   className={`kbRow ${activeKbId === kb.id ? 'kbRowActive' : ''}`}
                   onClick={() => selectKb(kb.id)}
                 >
-                  <span className="kbDot" style={{ background: activeKbId === kb.id ? '#fff' : kb.color }} />
+                  <span className="kbDot" style={{ background: kb.color }} />
                   <span className="kbRowName">{kb.name}</span>
                   <span className="kbRowMeta">{kb.docCount}</span>
                   <div className="kbActions" onClick={e => e.stopPropagation()}>
                     <button
                       className="sidebarIconBtn sidebarIconBtnDanger"
-                      title="Delete"
+                      title="Delete KB"
                       onClick={async () => {
-                        if (!confirm(`Delete "${kb.name}"?`)) return
+                        if (!confirm(`Delete "${kb.name}"? This cannot be undone.`)) return
                         await deleteKb(kb.id)
-                        loadKbs()
                         if (activeKbId === kb.id) setActiveKbId('')
+                        loadKbs()
                       }}
                     >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>
                       </svg>
                     </button>
@@ -130,18 +184,20 @@ export default function App() {
                 </button>
 
                 {activeKbId === kb.id && (
-                  <div>
-                    {NAV.map(n => (
-                      <button
-                        key={n.id}
-                        className={`navRow ${page === n.id ? 'navRowActive' : ''}`}
-                        onClick={() => setPage(n.id)}
-                      >
-                        <span style={{ fontSize: 13 }}>{n.icon}</span>
-                        {n.label}
-                      </button>
-                    ))}
-                  </div>
+                  <>
+                    {([ ['query','🔍','Query'], ['ingest','⬆','Ingest'], ['archive','📂','Archive'] ] as const).map(
+                      ([id, icon, label]) => (
+                        <button
+                          key={id}
+                          className={`navRow ${page === id ? 'navRowActive' : ''}`}
+                          onClick={() => setPage(id)}
+                        >
+                          <span style={{ fontSize: 13 }}>{icon}</span>
+                          {label}
+                        </button>
+                      )
+                    )}
+                  </>
                 )}
               </div>
             ))}
@@ -149,51 +205,54 @@ export default function App() {
         </aside>
 
         {/* Splitter */}
-        <div className="splitter" onMouseDown={onMouseDown}>
+        <div className="splitter" onMouseDown={() => {
+          isDragging.current = true
+          document.body.style.cursor = 'col-resize'
+          document.body.style.userSelect = 'none'
+        }}>
           <div className="splitterLine" />
         </div>
 
         {/* Content */}
-        <div className="contentPanel">
-          {activeKb ? (
-            <>
-              <div className="contentHeader">
-                <span className="kbDot" style={{ background: activeKb.color }} />
-                <div>
-                  <div className="contentTitle">{activeKb.name}</div>
-                  {activeKb.description && (
-                    <div className="contentSub">{activeKb.description}</div>
-                  )}
-                </div>
-                <span style={{ flex: 1 }} />
-                <div className="flex gap8">
-                  {NAV.map(n => (
-                    <button
-                      key={n.id}
-                      className={page === n.id ? 'blueBtn' : 'ghostBtn'}
-                      style={{ fontSize: 13, padding: '7px 12px' }}
-                      onClick={() => setPage(n.id)}
-                    >
-                      {n.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="contentBody">
-                {page === 'query'   && <Query   kbId={activeKbId} />}
-                {page === 'ingest'  && <Ingest  kbId={activeKbId} onDone={loadKbs} />}
-                {page === 'archive' && <Archive kbId={activeKbId} />}
-              </div>
-            </>
-          ) : (
+        {!activeKb ? (
+          <div className="chatCard">
             <div className="emptyState" style={{ flex: 1 }}>
               <div className="emptyIcon">📚</div>
               <div className="emptyTitle">No knowledge base selected</div>
               <div className="emptyText">Create one or select from the sidebar</div>
             </div>
-          )}
-        </div>
+          </div>
+        ) : page === 'query' ? (
+          <Query kbId={activeKbId} kbName={activeKb.name} />
+        ) : (
+          <div className="contentPanel">
+            <div className="contentHeader">
+              <span className="kbDot" style={{ background: activeKb.color }} />
+              <div>
+                <div className="contentTitle">{activeKb.name}</div>
+                {activeKb.description && <div className="contentSub">{activeKb.description}</div>}
+              </div>
+              <span style={{ flex: 1 }} />
+              <div className="flex gap8">
+                {(['ingest','archive'] as const).map(id => (
+                  <button key={id} className={page === id ? 'blueBtn' : 'ghostBtn'}
+                    style={{ fontSize: 13, padding: '7px 12px' }} onClick={() => setPage(id)}>
+                    {id.charAt(0).toUpperCase() + id.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="contentBody">
+              {page === 'ingest'  && <Ingest  kbId={activeKbId} onDone={loadKbs} />}
+              {page === 'archive' && <Archive kbId={activeKbId} />}
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* ══ FOOTER — exact GD Depth ══ */}
+      <div className="footerNote">
+        Scientific KB — 2026 — Powered by Gemini
       </div>
 
       {/* ── Create KB modal ── */}
@@ -207,12 +266,14 @@ export default function App() {
   )
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────── */
+
 function CreateKbModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [name, setName]     = useState('')
-  const [desc, setDesc]     = useState('')
-  const [color, setColor]   = useState('#478cd0')
+  const [name, setName]       = useState('')
+  const [desc, setDesc]       = useState('')
+  const [color, setColor]     = useState('#478cd0')
   const [loading, setLoading] = useState(false)
-  const [error, setError]   = useState('')
+  const [error, setError]     = useState('')
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -253,7 +314,7 @@ function CreateKbModal({ onClose, onCreated }: { onClose: () => void; onCreated:
             </div>
           </div>
           {error && <p style={{ color: '#dc2626', fontSize: 13 }}>{error}</p>}
-          <div className="flex gap8" style={{ marginTop: 8 }}>
+          <div className="flex gap8 mt8">
             <button type="button" className="ghostBtn w100" onClick={onClose}>Cancel</button>
             <button type="submit" className="blueBtn w100" disabled={loading || !name.trim()}>
               {loading ? 'Creating…' : 'Create'}
