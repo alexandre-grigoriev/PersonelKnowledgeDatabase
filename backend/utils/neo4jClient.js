@@ -137,19 +137,24 @@ async function startNeo4jForKb(kbId, port) {
 
   _writeConf(confDir, neo4jDir, port);
 
-  // neo4j binary — .bat on Windows, plain script on Unix
-  const neo4jBin = path.join(NEO4J_BIN_DIR, 'bin', IS_WINDOWS ? 'neo4j.bat' : 'neo4j');
+  // On Windows, neo4j.bat internally calls neo4j.ps1 via PowerShell.
+  // Spawn powershell.exe directly with -ExecutionPolicy Bypass to avoid
+  // the system execution policy blocking the script.
+  const neo4jPs1 = path.join(NEO4J_BIN_DIR, 'bin', 'neo4j.ps1');
+  const neo4jBin = path.join(NEO4J_BIN_DIR, 'bin', 'neo4j');
 
-  logger.info({ kbId, port, neo4jBin }, 'starting neo4j process');
+  const [spawnCmd, spawnArgs] = IS_WINDOWS
+    ? ['powershell.exe', ['-ExecutionPolicy', 'Bypass', '-File', neo4jPs1, 'console']]
+    : [neo4jBin, ['console']];
 
-  const proc = spawn(neo4jBin, ['console'], {
+  logger.info({ kbId, port, spawnCmd }, 'starting neo4j process');
+
+  const proc = spawn(spawnCmd, spawnArgs, {
     env: {
       ...process.env,
       NEO4J_HOME: NEO4J_BIN_DIR,
       NEO4J_CONF: confDir,
     },
-    // shell required on Windows for .bat execution
-    shell: IS_WINDOWS,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,
   });
@@ -165,9 +170,11 @@ async function startNeo4jForKb(kbId, port) {
   await _waitForPort(port, STARTUP_TIMEOUT_MS);
   logger.debug({ kbId, port }, 'bolt port open');
 
+  // auth disabled in conf — basic with any credentials still works,
+  // and basic is accepted by all neo4j-driver versions unlike auth.none()
   const driver = neo4j.driver(
     `bolt://localhost:${port}`,
-    neo4j.auth.none(),   // auth disabled in conf
+    neo4j.auth.basic('neo4j', 'neo4j'),
   );
 
   await _waitForConnectivity(driver, 30000);
