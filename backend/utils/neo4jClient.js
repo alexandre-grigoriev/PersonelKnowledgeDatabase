@@ -1,13 +1,22 @@
 /**
  * backend/utils/neo4jClient.js
- * Singleton registry of per-KB Neo4j driver instances.
- * Each KB runs its own Neo4j process on a dedicated bolt port.
+ * Neo4j driver registry with two operating modes:
  *
- * Public API:
- *   startNeo4jForKb(kbId, port)  — spawn + wait + init schema
- *   getDriver(kbId)              — return active driver (throws if not started)
- *   stopNeo4jForKb(kbId)        — graceful stop (used by rebuild flow)
- *   closeAll()                   — call on application shutdown
+ * MANAGED MODE (recommended for development):
+ *   Set NEO4J_URI in .env — connects to an already-running Neo4j instance.
+ *   All KBs share one server; isolation is enforced by kbId filters in every query.
+ *   startNeo4jForKb() just registers the KB and initialises its schema.
+ *   stopNeo4jForKb() is a no-op (we don't own the process).
+ *
+ * EMBEDDED MODE (future Electron bundle):
+ *   NEO4J_URI is not set — spawns a dedicated Neo4j process per KB.
+ *   Requires NEO4J_BIN_DIR to point to a bundled Neo4j installation.
+ *
+ * Public API (same in both modes):
+ *   startNeo4jForKb(kbId, port)
+ *   getDriver(kbId)
+ *   stopNeo4jForKb(kbId)
+ *   closeAll()
  */
 
 'use strict';
@@ -22,58 +31,56 @@ const logger = require('./logger');
 const { NEO4J_BIN_DIR, getKbNeo4jDir } = require('./config');
 const { initNeo4j } = require('../../scripts/initNeo4j');
 
+// ─── Mode detection ───────────────────────────────────────────────────────────
+
+const NEO4J_URI      = process.env.NEO4J_URI;      // e.g. bolt://localhost:7687
+const NEO4J_USER     = process.env.NEO4J_USER     || 'neo4j';
+const NEO4J_PASSWORD = process.env.NEO4J_PASSWORD || 'neo4j';
+const MANAGED_MODE   = !!NEO4J_URI;
+
+if (MANAGED_MODE) {
+  logger.info({ uri: NEO4J_URI }, 'neo4jClient: MANAGED MODE — connecting to existing Neo4j');
+} else {
+  logger.info({ binDir: NEO4J_BIN_DIR }, 'neo4jClient: EMBEDDED MODE — will spawn Neo4j per KB');
+}
+
+// ─── Shared state ─────────────────────────────────────────────────────────────
+
 /**
- * @typedef {{ driver: import('neo4j-driver').Driver, proc: import('child_process').ChildProcess, port: number }} KbInstance
- * @type {Map<string, KbInstance>}
+ * In managed mode:  Map<kbId, { driver, port: null, proc: null }>
+ * In embedded mode: Map<kbId, { driver, port, proc }>
+ * @type {Map<string, { driver: import('neo4j-driver').Driver, proc: any, port: number|null }>}
  */
 const _instances = new Map();
 
-const IS_WINDOWS = process.platform === 'win32';
+// Shared driver reused by all KBs in managed mode (one connection pool).
+let _sharedDriver = null;
 
-// Neo4j startup readiness window
-const STARTUP_TIMEOUT_MS  = parseInt(process.env.NEO4J_STARTUP_TIMEOUT_MS  || '90000', 10);
-const POLL_INTERVAL_MS    = 1500;
+const IS_WINDOWS         = process.platform === 'win32';
+const STARTUP_TIMEOUT_MS = parseInt(process.env.NEO4J_STARTUP_TIMEOUT_MS || '90000', 10);
+const POLL_INTERVAL_MS   = 1500;
 
-// ─── Internal helpers ──────────────────────────────────────────────────────────
+// ─── Helpers (embedded mode only) ────────────────────────────────────────────
 
-/**
- * Writes a minimal neo4j.conf file for an isolated KB instance.
- * Auth is disabled — instance is local-only (desktop app).
- * HTTP connector is disabled — we use bolt exclusively.
- * @param {string} confDir  - Directory to write neo4j.conf into
- * @param {string} neo4jDir - Root Neo4j directory for this KB
- * @param {number} boltPort
- */
 function _writeConf(confDir, neo4jDir, boltPort) {
   const lines = [
-    // Data directories
     `server.directories.data=${path.join(neo4jDir, 'data')}`,
     `server.directories.logs=${path.join(neo4jDir, 'logs')}`,
     `server.directories.plugins=${path.join(neo4jDir, 'plugins')}`,
     `server.directories.import=${path.join(neo4jDir, 'import')}`,
-    // Bolt only
     `server.bolt.listen_address=:${boltPort}`,
     `server.bolt.advertised_address=:${boltPort}`,
     'server.http.enabled=false',
     'server.https.enabled=false',
-    // Disable auth — single-user desktop app, bolt is localhost-only
     'dbms.security.auth_enabled=false',
-    // Single instance mode
     'dbms.mode=SINGLE',
   ];
   fs.writeFileSync(path.join(confDir, 'neo4j.conf'), lines.join('\n'), 'utf8');
 }
 
-/**
- * Polls until a TCP port accepts connections or the deadline passes.
- * @param {number} port
- * @param {number} timeoutMs
- * @returns {Promise<void>}
- */
 function _waitForPort(port, timeoutMs) {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeoutMs;
-
     function attempt() {
       const sock = net.createConnection({ host: 'localhost', port });
       sock.once('connect', () => { sock.destroy(); resolve(); });
@@ -90,168 +97,153 @@ function _waitForPort(port, timeoutMs) {
   });
 }
 
-/**
- * Retries driver.verifyConnectivity() until success or timeout.
- * The bolt port being open does not guarantee Neo4j is fully ready.
- * @param {import('neo4j-driver').Driver} driver
- * @param {number} timeoutMs
- * @returns {Promise<void>}
- */
 async function _waitForConnectivity(driver, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   let lastErr;
   while (Date.now() < deadline) {
-    try {
-      await driver.verifyConnectivity();
-      return;
-    } catch (err) {
-      lastErr = err;
-      await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
-    }
+    try { await driver.verifyConnectivity(); return; }
+    catch (err) { lastErr = err; await new Promise(r => setTimeout(r, POLL_INTERVAL_MS)); }
   }
-  throw new Error(`Neo4j driver not ready within ${timeoutMs}ms: ${lastErr && lastErr.message}`);
+  throw new Error(`Neo4j not ready within ${timeoutMs}ms: ${lastErr && lastErr.message}`);
 }
 
-// ─── Public API ────────────────────────────────────────────────────────────────
+// ─── Managed mode implementation ──────────────────────────────────────────────
 
-/**
- * Launches a Neo4j instance for the given KB and initializes its schema.
- * No-op if the instance is already running.
- * @param {string} kbId  - Knowledge base UUID
- * @param {number} port  - Bolt port to use for this instance
- * @returns {Promise<void>}
- */
-async function startNeo4jForKb(kbId, port) {
-  if (_instances.has(kbId)) {
-    logger.info({ kbId, port }, 'neo4j already running, skipping start');
-    return;
+async function _startManaged(kbId) {
+  // Reuse the shared driver — create it once on first KB registration
+  if (!_sharedDriver) {
+    _sharedDriver = neo4j.driver(NEO4J_URI, neo4j.auth.basic(NEO4J_USER, NEO4J_PASSWORD));
+    await _waitForConnectivity(_sharedDriver, 15000);
+    logger.info({ uri: NEO4J_URI }, 'neo4jClient: shared driver connected');
   }
 
+  // Initialise schema for this KB (idempotent — safe to call every startup)
+  await initNeo4j(_sharedDriver);
+
+  _instances.set(kbId, { driver: _sharedDriver, proc: null, port: null });
+  logger.info({ kbId }, 'neo4jClient: KB registered in managed mode');
+}
+
+async function _stopManaged(kbId) {
+  _instances.delete(kbId);
+  logger.info({ kbId }, 'neo4jClient: KB unregistered (shared Neo4j left running)');
+}
+
+// ─── Embedded mode implementation ─────────────────────────────────────────────
+
+async function _startEmbedded(kbId, port) {
   const neo4jDir = getKbNeo4jDir(kbId);
   const confDir  = path.join(neo4jDir, 'conf');
 
-  // Ensure all required sub-directories exist
   for (const sub of ['data', 'logs', 'plugins', 'import', 'conf']) {
     fs.mkdirSync(path.join(neo4jDir, sub), { recursive: true });
   }
-
   _writeConf(confDir, neo4jDir, port);
 
-  // On Windows, neo4j.bat internally calls neo4j.ps1 via PowerShell.
-  // Spawn powershell.exe directly with -ExecutionPolicy Bypass to avoid
-  // the system execution policy blocking the script.
   const neo4jPs1 = path.join(NEO4J_BIN_DIR, 'bin', 'neo4j.ps1');
   const neo4jBin = path.join(NEO4J_BIN_DIR, 'bin', 'neo4j');
-
-  const [spawnCmd, spawnArgs] = IS_WINDOWS
+  const [cmd, args] = IS_WINDOWS
     ? ['powershell.exe', ['-ExecutionPolicy', 'Bypass', '-File', neo4jPs1, 'console']]
     : [neo4jBin, ['console']];
 
-  logger.info({ kbId, port, spawnCmd }, 'starting neo4j process');
+  logger.info({ kbId, port, cmd }, 'neo4jClient: spawning Neo4j');
 
-  const proc = spawn(spawnCmd, spawnArgs, {
-    env: {
-      ...process.env,
-      NEO4J_HOME: NEO4J_BIN_DIR,
-      NEO4J_CONF: confDir,
-    },
+  const proc = spawn(cmd, args, {
+    env: { ...process.env, NEO4J_HOME: NEO4J_BIN_DIR, NEO4J_CONF: confDir },
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,
   });
 
-  proc.stdout.on('data', (d) => logger.debug({ kbId }, `[neo4j] ${d.toString().trimEnd()}`));
-  proc.stderr.on('data', (d) => logger.warn({ kbId },  `[neo4j] ${d.toString().trimEnd()}`));
+  proc.stdout.on('data', d => logger.debug({ kbId }, `[neo4j] ${d.toString().trimEnd()}`));
+  proc.stderr.on('data', d => logger.warn({ kbId },  `[neo4j] ${d.toString().trimEnd()}`));
   proc.on('exit', (code, signal) => {
-    logger.info({ kbId, code, signal }, 'neo4j process exited');
+    logger.info({ kbId, code, signal }, 'neo4jClient: process exited');
     _instances.delete(kbId);
   });
 
-  // Two-phase readiness: TCP port open, then bolt handshake
   await _waitForPort(port, STARTUP_TIMEOUT_MS);
-  logger.debug({ kbId, port }, 'bolt port open');
-
-  // auth disabled in conf — basic with any credentials still works,
-  // and basic is accepted by all neo4j-driver versions unlike auth.none()
-  const driver = neo4j.driver(
-    `bolt://localhost:${port}`,
-    neo4j.auth.basic('neo4j', 'neo4j'),
-  );
-
+  const driver = neo4j.driver(`bolt://localhost:${port}`, neo4j.auth.basic('neo4j', 'neo4j'));
   await _waitForConnectivity(driver, 30000);
-  logger.debug({ kbId, port }, 'bolt connectivity confirmed');
-
-  // Initialize constraints + indexes (idempotent)
   await initNeo4j(driver);
 
   _instances.set(kbId, { driver, proc, port });
-  logger.info({ kbId, port }, 'neo4j ready');
+  logger.info({ kbId, port }, 'neo4jClient: KB ready (embedded)');
+}
+
+async function _stopEmbedded(kbId) {
+  const inst = _instances.get(kbId);
+  if (!inst) return;
+  try { await inst.driver.close(); } catch (err) { logger.warn({ err, kbId }, 'driver close error'); }
+
+  inst.proc.kill('SIGTERM');
+  await new Promise(resolve => {
+    const watchdog = setTimeout(() => {
+      try { inst.proc.kill('SIGKILL'); } catch (_) {}
+      resolve();
+    }, 15000);
+    inst.proc.once('exit', () => { clearTimeout(watchdog); resolve(); });
+  });
+
+  _instances.delete(kbId);
+  logger.info({ kbId }, 'neo4jClient: embedded instance stopped');
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+/**
+ * Registers a KB with Neo4j and initialises its graph schema.
+ * In managed mode: connects to the shared instance (no process spawned).
+ * In embedded mode: spawns a dedicated Neo4j process on the given port.
+ * @param {string} kbId
+ * @param {number} port - used only in embedded mode
+ * @returns {Promise<void>}
+ */
+async function startNeo4jForKb(kbId, port) {
+  if (_instances.has(kbId)) {
+    logger.info({ kbId }, 'neo4jClient: already started, skipping');
+    return;
+  }
+  if (MANAGED_MODE) return _startManaged(kbId);
+  return _startEmbedded(kbId, port);
 }
 
 /**
- * Returns the active Neo4j driver for a KB.
+ * Returns the Neo4j driver for a KB.
  * @param {string} kbId
  * @returns {import('neo4j-driver').Driver}
- * @throws {Error} if the KB's Neo4j instance has not been started
  */
 function getDriver(kbId) {
-  const instance = _instances.get(kbId);
-  if (!instance) {
-    throw new Error(`Neo4j instance for KB "${kbId}" is not running — call startNeo4jForKb first`);
-  }
-  return instance.driver;
+  const inst = _instances.get(kbId);
+  if (!inst) throw new Error(`Neo4j not started for KB "${kbId}" — call startNeo4jForKb first`);
+  return inst.driver;
 }
 
 /**
- * Gracefully stops the Neo4j instance for a KB.
- * Used by the rebuild flow before wiping the data directory.
+ * Stops the Neo4j instance for a KB.
+ * In managed mode: unregisters the KB (does not stop the shared server).
+ * In embedded mode: kills the spawned process.
  * @param {string} kbId
  * @returns {Promise<void>}
  */
 async function stopNeo4jForKb(kbId) {
-  const instance = _instances.get(kbId);
-  if (!instance) {
-    logger.warn({ kbId }, 'stopNeo4jForKb: no running instance, nothing to stop');
+  if (!_instances.has(kbId)) {
+    logger.warn({ kbId }, 'neo4jClient: stopNeo4jForKb — not running');
     return;
   }
-
-  logger.info({ kbId }, 'stopping neo4j');
-
-  try {
-    await instance.driver.close();
-  } catch (err) {
-    logger.warn({ err, kbId }, 'error closing neo4j driver');
-  }
-
-  instance.proc.kill('SIGTERM');
-
-  // Wait up to 15 s for graceful exit, then force-kill
-  await new Promise((resolve) => {
-    const watchdog = setTimeout(() => {
-      logger.warn({ kbId }, 'neo4j did not stop gracefully, sending SIGKILL');
-      try { instance.proc.kill('SIGKILL'); } catch (_) { /* already gone */ }
-      resolve();
-    }, 15000);
-
-    instance.proc.once('exit', () => {
-      clearTimeout(watchdog);
-      resolve();
-    });
-  });
-
-  _instances.delete(kbId);
-  logger.info({ kbId }, 'neo4j stopped');
+  if (MANAGED_MODE) return _stopManaged(kbId);
+  return _stopEmbedded(kbId);
 }
 
 /**
- * Closes all active drivers and terminates all Neo4j processes.
- * Call on application shutdown to avoid orphan processes.
+ * Shuts down all KB registrations and, in managed mode, closes the shared driver.
  * @returns {Promise<void>}
  */
 async function closeAll() {
-  const ids = [..._instances.keys()];
-  logger.info({ count: ids.length }, 'closing all neo4j instances');
-  for (const kbId of ids) {
-    await stopNeo4jForKb(kbId);
+  for (const kbId of [..._instances.keys()]) await stopNeo4jForKb(kbId);
+  if (MANAGED_MODE && _sharedDriver) {
+    await _sharedDriver.close();
+    _sharedDriver = null;
+    logger.info('neo4jClient: shared driver closed');
   }
 }
 
