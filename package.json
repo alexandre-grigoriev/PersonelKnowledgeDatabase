@@ -2,7 +2,7 @@
   "name": "scientific-knowledge-base",
   "version": "0.1.0",
   "description": "Desktop knowledge base for scientific publications and ASTM standards",
-  "main": "frontend/main.js",
+  "main": "app/main.js",
   "scripts": {
     "start": "node backend/server.js",
     "dev": "NODE_ENV=development node backend/server.js",

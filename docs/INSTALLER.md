@@ -19,7 +19,7 @@ n'a besoin d'aucun prérequis technique.
 ScientificKB.app (Mac) / ScientificKB (Windows)
 ├── resources/
 │   ├── app/                    ← code Node.js
-│   │   ├── frontend/main.js    ← main process Electron
+│   │   ├── app/main.js    ← main process Electron
 │   │   ├── backend/            ← Express backend
 │   │   └── frontend/build/     ← React buildé
 │   ├── neo4j/                  ← binaires Neo4j (téléchargés au setup)
@@ -31,7 +31,7 @@ ScientificKB.app (Mac) / ScientificKB (Windows)
 └── ...
 ```
 
-## frontend/main.js — Process principal Electron
+## app/main.js — Process principal Electron
 
 ### Séquence de démarrage
 ```javascript
@@ -63,7 +63,7 @@ async function startNeo4jForKb(kbId) {
 }
 ```
 
-### Tray (frontend/tray.js)
+### Tray (app/tray.js)
 L'application reste active dans le tray même fenêtre fermée.
 Menu tray :
 - "Ouvrir ScientificKB"

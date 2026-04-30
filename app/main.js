@@ -1,5 +1,5 @@
 /**
- * frontend/main.js
+ * app/main.js
  * Electron main process.
  * Responsibilities: start the Express backend, create the BrowserWindow,
  * register the system tray, and handle graceful shutdown.

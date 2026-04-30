@@ -20,7 +20,7 @@ This file provides essential instructions and conventions for AI coding agents w
 ---
 
 ## Key Directories
-- `frontend/` — Electron shell
+- `app/` — Electron shell
 - `backend/` — API, ingestion, retrieval, utils
 - `chrome-extension/` — Browser extension
 - `scripts/` — Setup and maintenance scripts

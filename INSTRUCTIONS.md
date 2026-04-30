@@ -57,13 +57,13 @@ Wait for my confirmation before moving to step 19.
 Step 18 confirmed. Implement step 19 from docs/RAG_PIPELINE.md: backend/routes/query.js
 Wait for my confirmation before moving to step 20.
 
-Step 19 confirmed. Implement step 20 from docs/RAG_PIPELINE.md: frontend/main.js
+Step 19 confirmed. Implement step 20 from docs/RAG_PIPELINE.md: app/main.js
 Wait for my confirmation before moving to step 21.
 
-Step 20 confirmed. Implement step 21 from docs/RAG_PIPELINE.md: frontend/preload.js
+Step 20 confirmed. Implement step 21 from docs/RAG_PIPELINE.md: app/preload.js
 Wait for my confirmation before moving to step 22.
 
-Step 21 confirmed. Implement step 22 from docs/RAG_PIPELINE.md: frontend/tray.js
+Step 21 confirmed. Implement step 22 from docs/RAG_PIPELINE.md: app/tray.js
 Wait for my confirmation before moving to step 23.
 
 Step 22 confirmed. Implement step 23 from docs/RAG_PIPELINE.md: chrome-extension/content.js

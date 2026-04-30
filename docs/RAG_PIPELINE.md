@@ -34,9 +34,9 @@ Implémenter fichier par fichier, compiler sans erreur avant de passer au suivan
 19. `backend/routes/query.js` — POST /api/query
 
 ### Phase 6 — Electron shell
-20. `frontend/main.js` — process principal, démarrage services, tray
-21. `frontend/preload.js` — IPC bridge contextIsolation
-22. `frontend/tray.js` — icône système + menu
+20. `app/main.js` — process principal, démarrage services, tray
+21. `app/preload.js` — IPC bridge contextIsolation
+22. `app/tray.js` — icône système + menu
 
 ### Phase 7 — Extension Chrome
 23. `chrome-extension/content.js` — détection PDF + extraction méta

@@ -16,7 +16,7 @@ extension Chrome pour capturer du contenu web directement.
 | PDF parsing    | pdf-parse + pdfplumber (Python subprocess)               |
 | Archive        | Filesystem local (~/scientific-kb/)                      |
 | Metadata/Queue | SQLite 3 (une DB par KB)                                 |
-| Frontend       | React 19 / TypeScript / Tailwind (NE PAS MODIFIER)       |
+| Frontend UI    | React 19 / TypeScript / Tailwind / Vite (frontend/)      |
 | Extension      | Chrome Manifest V3 (Vanilla JS)                          |
 
 ## Layout du dépôt
@@ -32,10 +32,14 @@ extension Chrome pour capturer du contenu web directement.
 │   ├── INSTALLER.md
 │   ├── CHROME_EXTENSION.md
 │   └── API_CONTRACTS.md
-├── frontend/                   ← Electron shell
+├── app/                        ← Electron shell
 │   ├── main.js
 │   ├── preload.js
 │   └── tray.js
+├── frontend/                   ← React 19 / TypeScript / Tailwind UI
+│   ├── src/
+│   ├── index.html
+│   └── package.json
 ├── backend/
 │   ├── server.js
 │   ├── routes/
@@ -76,12 +80,40 @@ extension Chrome pour capturer du contenu web directement.
         └── neo4j/              data Neo4j par KB
 ```
 
+## Frontend (frontend/)
+
+Pages: **KB Dashboard** · **Ingest** · **Query** · **Archive**
+
+```
+frontend/
+├── index.html
+├── package.json          Vite + React 19 + TypeScript + Tailwind
+├── vite.config.ts        proxy /api → localhost:3000
+├── tailwind.config.ts
+└── src/
+    ├── main.tsx
+    ├── App.tsx            React Router v6 — 4 routes
+    ├── index.css
+    ├── api/client.ts      typed fetch wrappers for all endpoints
+    ├── types/index.ts     Kb, ArchivedDoc, IngestJob, QueryResult …
+    ├── components/
+    │   ├── Layout.tsx     top nav + KB selector
+    │   └── KbSelector.tsx shared KB picker (localStorage)
+    └── pages/
+        ├── KbDashboard.tsx  list + create + stats + delete
+        ├── Ingest.tsx       drag-and-drop PDF + metadata + progress bar
+        ├── Query.tsx        question input + cited answer + source cards
+        └── Archive.tsx      searchable document table + delete
+```
+
+Dev server: `cd frontend && npm install && npm run dev` → http://localhost:5173
+Vite proxies all `/api/*` calls to the backend on port 3000.
+
 ## Règles absolues
 1. Appels Gemini séquentiels uniquement — jamais en parallèle
 2. Neo4j MERGE uniquement — jamais CREATE direct
 3. Pas de console.log en production — utiliser logger (pino)
-4. JSDoc sur toutes les fonctions publiques
+4. JSDoc sur toutes les fonctions publiques (backend JS uniquement)
 5. Chunking heuristique d'abord — structure détectée avant appel LLM
-6. Frontend non modifiable
-7. Archive = source of truth — toute ingestion copie d'abord le PDF
-8. Multi-KB = isolation complète — chaque KB a son propre répertoire Neo4j + SQLite
+6. Archive = source of truth — toute ingestion copie d'abord le PDF
+7. Multi-KB = isolation complète — chaque KB a son propre répertoire Neo4j + SQLite

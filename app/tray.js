@@ -1,5 +1,5 @@
 /**
- * frontend/tray.js
+ * app/tray.js
  * System tray icon and context menu.
  * The tray keeps the app alive when the main window is closed on macOS/Windows.
  */
