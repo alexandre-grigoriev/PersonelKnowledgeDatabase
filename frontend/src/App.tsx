@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createKb, deleteKb, listKbs } from './api/client'
 import type { Kb } from './types'
+import { LANGS } from './constants'
+import { TopSelect } from './components/ui/TopSelect'
 import Ingest from './pages/Ingest'
 import Query from './pages/Query'
 import Archive from './pages/Archive'
@@ -15,11 +17,13 @@ export default function App() {
   const [kbs, setKbs]               = useState<Kb[]>([])
   const [activeKbId, setActiveKbId] = useState<string>(localStorage.getItem('skb_active_kb') ?? '')
   const [page, setPage]             = useState<Page>('query')
+  const [lang, setLang]             = useState('en')
   const [sidebarWidth, setSidebarWidth] = useState(() => Math.round(window.innerWidth * 0.22))
+
   const [showCreate, setShowCreate] = useState(false)
   const [kbMenuOpen, setKbMenuOpen] = useState(false)
 
-  const isDragging = useRef(false)
+  const isDragging  = useRef(false)
   const mainGridRef = useRef<HTMLElement>(null)
   const kbMenuRef   = useRef<HTMLDivElement>(null)
 
@@ -45,7 +49,7 @@ export default function App() {
     setPage('query')
   }
 
-  // ── Splitter drag (exact GD Depth) ─────────────────────────────────────────────
+  // ── Splitter drag — exact GD Depth ─────────────────────────────────────────────
 
   useEffect(() => {
     function onMove(e: MouseEvent) {
@@ -81,36 +85,38 @@ export default function App() {
   return (
     <div className="appRoot">
 
-      {/* ══ TOP BAR — exact GD Depth structure ══ */}
+      {/* ══ TOP BAR — exact GD Depth ══════════════════════════════════════════ */}
       <header className="topBar">
         <div className="topBarInner">
 
-          {/* Left: logo placeholder */}
+          {/* Left: HORIBA logo — exact as GD Depth brandLeft */}
           <div className="brandLeft">
-            <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-              <rect width="32" height="32" rx="8" fill="#478cd0"/>
-              <path d="M8 16h16M16 8v16" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
-            </svg>
+            <img className="brandHoriba" src="/screen logo Horiba.png" alt="HORIBA" />
           </div>
 
-          {/* Centre: brand name — absolutely centred, same as GD Depth */}
-          <span className="brandName">Scientific KB</span>
+          {/* Centre: brand name — absolutely centred, exact GD Depth style */}
+          <span className="brandName">Lab AI</span>
 
-          {/* Right: KB selector dropdown + nav */}
-          <div className="topRight" ref={kbMenuRef}>
+          {/* Right: language selector + KB selector — exact GD Depth topRight */}
+          <div className="topRight">
+
+            {/* Language selector — exact GD Depth TopSelect with language.png */}
+            <TopSelect
+              imgSrc="/language.png"
+              value={lang}
+              options={LANGS}
+              onChange={setLang}
+            />
+
             {/* KB selector */}
-            <div className="topSelectWrap">
-              <button
-                className="topSelectBtn"
-                onClick={() => setKbMenuOpen(o => !o)}
-              >
-                {activeKb && (
-                  <span className="topSelectDot" style={{ background: activeKb.color }} />
-                )}
+            <div className="topSelectWrap" ref={kbMenuRef}>
+              <button className="topSelectBtn" onClick={() => setKbMenuOpen(o => !o)}>
+                {activeKb && <span className="topSelectDot" style={{ background: activeKb.color }} />}
                 <span className="topSelectLabel">KB:</span>
                 <span className="topSelectValue">{activeKb?.name ?? 'None'}</span>
-                <svg className="topSelectChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M6 9l6 6 6-6"/>
+                <svg className="topSelectChevron" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="6 9 12 15 18 9"/>
                 </svg>
               </button>
               {kbMenuOpen && (
@@ -118,8 +124,9 @@ export default function App() {
                   {kbs.map(kb => (
                     <button
                       key={kb.id}
-                      className={`topSelectItem ${kb.id === activeKbId ? 'topSelectItemActive' : ''}`}
+                      className={`topSelectDropdownItem${kb.id === activeKbId ? ' topSelectDropdownItemActive' : ''}`}
                       onClick={() => selectKb(kb.id)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8 }}
                     >
                       <span className="topSelectDot" style={{ background: kb.color }} />
                       {kb.name}
@@ -127,9 +134,12 @@ export default function App() {
                     </button>
                   ))}
                   {kbs.length > 0 && <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '4px 0' }} />}
-                  <button className="topSelectItem" onClick={() => { setKbMenuOpen(false); setShowCreate(true) }}>
-                    <span style={{ fontSize: 16, color: '#478cd0' }}>＋</span>
-                    New knowledge base…
+                  <button
+                    className="topSelectDropdownItem"
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#478cd0' }}
+                    onClick={() => { setKbMenuOpen(false); setShowCreate(true) }}
+                  >
+                    ＋ New knowledge base…
                   </button>
                 </div>
               )}
@@ -138,7 +148,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* ══ MAIN GRID — same as GD Depth ══ */}
+      {/* ══ MAIN GRID — exact GD Depth ════════════════════════════════════════ */}
       <main ref={mainGridRef} className="mainGrid" style={{ gridTemplateColumns: `${sidebarWidth}px auto 1fr` }}>
 
         {/* Sidebar */}
@@ -159,7 +169,7 @@ export default function App() {
             {kbs.map(kb => (
               <div key={kb.id} className="projectGroup">
                 <button
-                  className={`kbRow ${activeKbId === kb.id ? 'kbRowActive' : ''}`}
+                  className={`kbRow${activeKbId === kb.id ? ' kbRowActive' : ''}`}
                   onClick={() => selectKb(kb.id)}
                 >
                   <span className="kbDot" style={{ background: kb.color }} />
@@ -189,7 +199,7 @@ export default function App() {
                       ([id, icon, label]) => (
                         <button
                           key={id}
-                          className={`navRow ${page === id ? 'navRowActive' : ''}`}
+                          className={`navRow${page === id ? ' navRowActive' : ''}`}
                           onClick={() => setPage(id)}
                         >
                           <span style={{ fontSize: 13 }}>{icon}</span>
@@ -204,7 +214,7 @@ export default function App() {
           </div>
         </aside>
 
-        {/* Splitter */}
+        {/* Splitter — exact GD Depth */}
         <div className="splitter" onMouseDown={() => {
           isDragging.current = true
           document.body.style.cursor = 'col-resize'
@@ -223,7 +233,7 @@ export default function App() {
             </div>
           </div>
         ) : page === 'query' ? (
-          <Query kbId={activeKbId} kbName={activeKb.name} />
+          <Query kbId={activeKbId} kbName={activeKb.name} lang={lang} />
         ) : (
           <div className="contentPanel">
             <div className="contentHeader">
@@ -234,7 +244,7 @@ export default function App() {
               </div>
               <span style={{ flex: 1 }} />
               <div className="flex gap8">
-                {(['ingest','archive'] as const).map(id => (
+                {(['ingest', 'archive'] as const).map(id => (
                   <button key={id} className={page === id ? 'blueBtn' : 'ghostBtn'}
                     style={{ fontSize: 13, padding: '7px 12px' }} onClick={() => setPage(id)}>
                     {id.charAt(0).toUpperCase() + id.slice(1)}
@@ -250,12 +260,12 @@ export default function App() {
         )}
       </main>
 
-      {/* ══ FOOTER — exact GD Depth ══ */}
+      {/* ══ FOOTER — exact GD Depth ═══════════════════════════════════════════ */}
       <div className="footerNote">
-        Scientific KB — 2026 — Powered by Gemini
+        Lab AI — Scientific Knowledge Base — Powered by Gemini
       </div>
 
-      {/* ── Create KB modal ── */}
+      {/* Create KB modal */}
       {showCreate && (
         <CreateKbModal
           onClose={() => setShowCreate(false)}
@@ -266,7 +276,7 @@ export default function App() {
   )
 }
 
-/* ─────────────────────────────────────────────────────────────────────────────── */
+/* ─── Create KB modal ───────────────────────────────────────────────────────── */
 
 function CreateKbModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [name, setName]       = useState('')

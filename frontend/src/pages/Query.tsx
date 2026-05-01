@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { queryKb } from '../api/client'
 import type { QueryResult } from '../types'
+import { WELCOME } from '../constants'
+import { useSpeechRecognition } from '../hooks/useSpeechRecognition'
 
 interface Message {
-  id:        string
-  role:      'user' | 'assistant'
-  text:      string
-  timestamp: string
-  sources?:  QueryResult['sources']
+  id:         string
+  role:       'user' | 'assistant'
+  text:       string
+  timestamp:  string
+  sources?:   QueryResult['sources']
   subQueries?: string[]
 }
 
@@ -18,13 +20,20 @@ function fmtTime(iso: string) {
 }
 function fmtScore(s: number) { return `${(s * 100).toFixed(0)}%` }
 
-export default function Query({ kbId, kbName }: { kbId: string; kbName: string }) {
+export default function Query({
+  kbId, kbName, lang,
+}: {
+  kbId:   string
+  kbName: string
+  lang:   string
+}) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput]       = useState('')
   const [isThinking, setIsThinking] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const speech    = useSpeechRecognition(lang)
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll on new messages — exact GD Depth behaviour
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages, isThinking])
@@ -43,15 +52,14 @@ export default function Query({ kbId, kbName }: { kbId: string; kbName: string }
 
     try {
       const result = await queryKb(kbId, q)
-      const asstMsg: Message = {
+      setMessages(prev => [...prev, {
         id:         makeId(),
         role:       'assistant',
         text:       result.answer,
         timestamp:  now(),
         sources:    result.sources,
         subQueries: result.queryPlan.subQueries,
-      }
-      setMessages(prev => [...prev, asstMsg])
+      }])
     } catch (err) {
       setMessages(prev => [...prev, {
         id: makeId(), role: 'assistant',
@@ -65,25 +73,25 @@ export default function Query({ kbId, kbName }: { kbId: string; kbName: string }
 
   return (
     <div className="chatCard">
-      {/* Header — same as GD Depth chatHeader */}
+
+      {/* Header — exact GD Depth chatHeader */}
       <div className="chatHeader">
         <div className="chatTitle">{kbName}</div>
         <div className="chatSub">Ask anything. Get cited answers.</div>
       </div>
 
-      {/* Body */}
+      {/* Body — exact GD Depth chatBody */}
       <div className="chatBody">
         <div className="chatScroll" ref={scrollRef}>
 
-          {/* Welcome message when empty */}
+          {/* Welcome message — uses language from WELCOME map */}
           {messages.length === 0 && !isThinking && (
             <div className="msgRow msgRowAsst">
               <div className="msgMeta">
                 <span className="msgRole">ASSISTANT</span>
               </div>
               <div className="msgBubble msgBubbleAsst">
-                Hello! Ask me anything about the documents in <strong>{kbName}</strong>.
-                I'll search the knowledge graph and provide cited answers.
+                {WELCOME[lang] ?? WELCOME.en}
               </div>
             </div>
           )}
@@ -98,7 +106,7 @@ export default function Query({ kbId, kbName }: { kbId: string; kbName: string }
               <div className={`msgBubble ${m.role === 'user' ? 'msgBubbleUser' : 'msgBubbleAsst'}`}>
                 {m.text}
 
-                {/* Sub-queries chips */}
+                {/* Sub-query chips */}
                 {m.subQueries && m.subQueries.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 10 }}>
                     {m.subQueries.map((q, i) => (
@@ -137,7 +145,7 @@ export default function Query({ kbId, kbName }: { kbId: string; kbName: string }
             </div>
           ))}
 
-          {/* Thinking indicator */}
+          {/* Thinking dots — exact GD Depth */}
           {isThinking && (
             <div className="msgRow msgRowAsst">
               <div className="msgMeta">
@@ -152,28 +160,50 @@ export default function Query({ kbId, kbName }: { kbId: string; kbName: string }
           )}
         </div>
 
-        {/* Input row — pill shape, exact GD Depth */}
+        {/* Input row — exact GD Depth: send.png when text, microphone.png when empty */}
         <div className="chatInputRow">
           <input
             className="chatInput"
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && input.trim() && !isThinking) send() }}
-            placeholder="Type your question…"
+            placeholder={isThinking ? 'Thinking…' : 'Type your question…'}
             disabled={isThinking}
           />
-          <button
-            className="chatInputIconBtn"
-            onClick={() => send()}
-            disabled={!input.trim() || isThinking}
-            title="Send"
-          >
-            {/* Send arrow icon */}
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#478cd0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13"/>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-            </svg>
-          </button>
+
+          {input.trim() ? (
+            /* Send button — shows send.png, exact GD Depth */
+            <button
+              className="chatInputIconBtn"
+              onClick={() => send()}
+              disabled={isThinking}
+              title="Send"
+            >
+              <img src="/send.png" alt="Send" className="chatInputIcon" style={{ width: 24, height: 24 }} />
+            </button>
+          ) : (
+            /* Microphone button — hold to speak, exact GD Depth */
+            <button
+              className={`chatInputIconBtn${speech.isRecording ? ' chatMicRecording' : ''}`}
+              title={speech.supported ? (speech.isRecording ? 'Release to send' : 'Hold to speak') : 'Voice not supported in this browser'}
+              onPointerDown={e => { e.preventDefault(); if (!isThinking && speech.supported) speech.start(text => send(text)) }}
+              onPointerUp={e => { e.preventDefault(); speech.stop() }}
+              onPointerLeave={e => { e.preventDefault(); if (speech.isRecording) speech.stop() }}
+              onPointerCancel={e => { e.preventDefault(); if (speech.isRecording) speech.stop() }}
+              disabled={!speech.supported || isThinking}
+            >
+              {speech.isRecording ? (
+                /* Red mic SVG when recording */
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                  stroke="#e53e3e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/>
+                </svg>
+              ) : (
+                <img src="/microphone.png" alt="Mic" className="chatInputIcon" style={{ width: 24, height: 24 }} />
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>

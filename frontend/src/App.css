@@ -54,11 +54,8 @@ body {
   align-items: center;
   gap: 12px;
 }
-.brandLogo {
-  height: 32px;
-  width: auto;
-  margin-left: 5px;
-}
+/* HORIBA logo — exact GD Depth sizing */
+.brandHoriba { height: auto; width: auto; margin-left: 5px; }
 
 /* Center brand name – absolutely centred, stretched horizontally */
 .brandName {
@@ -84,17 +81,26 @@ body {
 }
 
 /* TopSelect-style dropdown (KB selector) */
-.topSelectWrap   { position: relative; }
-.topSelectBtn    { display: flex; align-items: center; gap: 8px; border: none; border-radius: 8px; padding: 8px 12px; background: #fff; font-size: 15px; color: #111827; cursor: pointer; }
+/* TopSelect — exact GD Depth */
+.topSelectWrap    { position: relative; }
+.topSelectBtn     { display: flex; align-items: center; gap: 8px; border: none; border-radius: 8px; padding: 8px 12px; background: #fff; font-size: 15px; color: #111827; cursor: pointer; }
 .topSelectBtn:hover { background: #f9fafb; }
-.topSelectLabel  { font-size: 15px; color: #6b7280; }
-.topSelectValue  { font-size: 15px; color: #111827; font-weight: 500; }
+.topSelectImg     { width: 22px; height: 22px; object-fit: contain; }
+.topSelectIcon    { width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; color: #374151; background: #f7f8fa; border: 1px solid var(--border); }
+.topSelectLabel   { font-size: 15px; color: #6b7280; }
+.topSelectValue   { font-size: 15px; color: #111827; }
 .topSelectChevron { width: 16px; height: 16px; color: #6b7280; flex-shrink: 0; }
-.topSelectDropdown { position: absolute; top: 100%; right: 0; min-width: 200px; margin-top: 4px; background: #fff; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.12); z-index: 10; overflow: hidden; }
-.topSelectItem   { width: 100%; border: none; background: transparent; padding: 10px 14px; font-size: 15px; color: #111827; cursor: pointer; text-align: left; display: flex; align-items: center; gap: 8px; }
+.topSelectDropdown { position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; background: #fff; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.12); z-index: 10; overflow: hidden; }
+.topSelectDropdownItem { width: 100%; border: none; background: transparent; padding: 10px 12px; font-size: 15px; color: #111827; cursor: pointer; text-align: left; }
+.topSelectDropdownItem:hover { background: #f3f4f6; }
+.topSelectDropdownItemActive { color: var(--orange); }
+/* KB dot used in the KB selector dropdown (kept for the KB dropdown in topRight) */
+.topSelectDot  { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.topSelectItem { width: 100%; border: none; background: transparent; padding: 10px 14px; font-size: 15px; color: #111827; cursor: pointer; text-align: left; display: flex; align-items: center; gap: 8px; }
 .topSelectItem:hover { background: #f3f4f6; }
 .topSelectItemActive { color: var(--orange); font-weight: 600; }
-.topSelectDot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+/* Mic recording state */
+.chatMicRecording { background: rgba(229,62,62,0.1) !important; }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    MAIN GRID
