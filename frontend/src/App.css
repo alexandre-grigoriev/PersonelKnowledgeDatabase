@@ -170,8 +170,8 @@ body {
 .sidebarBody  { flex: 1; overflow-y: auto; padding: 8px; }
 .sidebarEmpty { font-size: 13px; color: #9ca3af; text-align: center; padding: 24px 12px; line-height: 1.6; }
 
-/* KB rows (= GD Depth projectRow) */
-.kbRow {
+/* ── Project rows (exact GD Depth .projectRow) ──────────────────────────────── */
+.projectRow {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -180,25 +180,20 @@ body {
   cursor: pointer;
   color: #185FA5;
   font-size: 18px;
-  font-weight: 500;
   background: transparent;
   border: none;
   width: 100%;
   text-align: left;
 }
-.kbRow:hover { background: #e4eef8; }
-.kbRowActive,
-.kbRowActive:hover { background: #378ADD; color: #FFFFFF; }
-.kbRowActive .kbDot { background: #fff !important; }
-.kbDot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.kbRowName { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.kbRowMeta { font-size: 12px; opacity: 0.7; white-space: nowrap; }
-.kbActions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.15s; }
-.kbRow:hover .kbActions { opacity: 1; }
-.kbRowActive .kbActions { opacity: 1; }
+.projectRow:hover { background: #e4eef8; }
+.projectRowActive,
+.projectRowActive:hover { background: #378ADD; color: #FFFFFF; }
+.projectName { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.projectActions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.15s; }
+.projectRow:hover .projectActions { opacity: 1; }
 
-/* Nav rows (= GD Depth chatRow) */
-.navRow {
+/* ── Chat rows (exact GD Depth .chatRow) ─────────────────────────────────────── */
+.chatRow {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -212,8 +207,49 @@ body {
   width: 100%;
   text-align: left;
 }
+.chatRow:hover { background: #e4eef8; }
+.chatRowActive { background: #D0E4F5; color: #0C447C; }
+.chatRowTitle { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chatRow .sidebarIconBtn { opacity: 0; }
+.chatRow:hover .sidebarIconBtn { opacity: 1; }
+.chatRenameInput {
+  flex: 1;
+  font-size: 14px;
+  padding: 2px 6px;
+  border: 1px solid #93c5fd;
+  border-radius: 4px;
+  outline: none;
+  background: white;
+  color: #111827;
+  min-width: 0;
+}
+
+/* ── Utility nav rows at bottom of sidebar ───────────────────────────────────── */
+.navRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #1F5F9E;
+  font-size: 14px;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+}
 .navRow:hover { background: #e4eef8; }
 .navRowActive { background: #D0E4F5; color: #0C447C; font-weight: 600; }
+
+/* ── New project inline form (exact GD Depth sidebarNewProject) ──────────────── */
+.sidebarNewProject { padding: 8px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+.sidebarInput { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 14px; outline: none; font-family: inherit; }
+.sidebarInput:focus { border-color: rgba(22,119,255,0.45); box-shadow: 0 0 0 3px rgba(22,119,255,0.12); }
+.sidebarInputActions { display: flex; gap: 6px; }
+
+/* KB dot (small colour indicator) */
+.kbDot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 
 /* Sidebar icon buttons */
 .sidebarIconBtn {

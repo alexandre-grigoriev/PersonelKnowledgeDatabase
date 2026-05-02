@@ -59,3 +59,12 @@ export interface QueryResult {
   entities: string[]
   queryPlan: { subQueries: string[]; strategy: string }
 }
+
+export interface ChatMessage {
+  id:         string
+  role:       'user' | 'assistant'
+  text:       string
+  timestamp:  string
+  sources?:   QuerySource[]
+  subQueries?: string[]
+}
