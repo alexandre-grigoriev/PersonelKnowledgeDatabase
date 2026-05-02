@@ -283,7 +283,7 @@ export default function App() {
                 </svg>
               </button>
               {settingsOpen && (
-                <div className="topSelectDropdown" style={{ right: 0, left: 'auto', minWidth: 210 }}>
+                <div className="topSelectDropdown" style={{ right: 0, left: 'auto', minWidth: 220 }}>
                   <button className="topSelectDropdownItem" onClick={() => { setSettingsOpen(false); setShowCreate(true) }}>
                     New…
                   </button>
@@ -297,6 +297,16 @@ export default function App() {
                     style={{ color: activeKb ? '#dc2626' : '#9ca3af', ...(activeKb ? {} : { pointerEvents: 'none' as const }) }}
                     onClick={handleDeleteKb}>
                     Delete selected KB
+                  </button>
+                  <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '2px 0' }} />
+                  <button className="topSelectDropdownItem"
+                    style={!activeKb ? { opacity: 0.4, pointerEvents: 'none' } : {}}
+                    onClick={() => { setSettingsOpen(false); alert('Export — coming soon') }}>
+                    Export…
+                  </button>
+                  <button className="topSelectDropdownItem"
+                    onClick={() => { setSettingsOpen(false); alert('Import — coming soon') }}>
+                    Import…
                   </button>
                 </div>
               )}
@@ -405,20 +415,7 @@ export default function App() {
               </div>
             ))}
 
-            {/* Bottom utility links — Ingest / Archive */}
-            {activeKb && (
-              <>
-                <div style={{ borderTop: '1px solid var(--border)', margin: '8px 0 4px' }} />
-                <button className={`navRow${mainPage === 'ingest' && !activeChatId ? ' navRowActive' : ''}`}
-                  onClick={() => { setActiveChatId(null); setMainPage('ingest') }}>
-                  <span>⬆</span> Ingest
-                </button>
-                <button className={`navRow${mainPage === 'archive' && !activeChatId ? ' navRowActive' : ''}`}
-                  onClick={() => { setActiveChatId(null); setMainPage('archive') }}>
-                  <span>📂</span> Archive
-                </button>
-              </>
-            )}
+            {/* no utility links — Ingest and Archive are inside Edit KB modal */}
           </div>
         </aside>
 
@@ -483,28 +480,21 @@ export default function App() {
 
       {/* Modals */}
       {showCreate && (
-        <KbModal mode="create" onClose={() => setShowCreate(false)}
-          onDone={() => { loadKbs(); setShowCreate(false) }} />
+        <KbModal onClose={() => setShowCreate(false)} onDone={() => { loadKbs(); setShowCreate(false) }} />
       )}
       {showEdit && activeKb && (
-        <KbModal mode="edit" kb={activeKb} onClose={() => setShowEdit(false)}
-          onDone={() => { loadKbs(); setShowEdit(false) }} />
+        <EditKbModal kb={activeKb} onClose={() => setShowEdit(false)} onDone={() => { loadKbs(); setShowEdit(false) }} />
       )}
     </div>
   )
 }
 
-// ─── KB create / edit modal ────────────────────────────────────────────────────
+// ─── Create KB modal (small, simple) ─────────────────────────────────────────
 
-function KbModal({ mode, kb, onClose, onDone }: {
-  mode: 'create' | 'edit'
-  kb?: Kb
-  onClose: () => void
-  onDone:  () => void
-}) {
-  const [name, setName]       = useState(kb?.name ?? '')
-  const [desc, setDesc]       = useState(kb?.description ?? '')
-  const [color, setColor]     = useState(kb?.color ?? '#478cd0')
+function KbModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [name, setName]       = useState('')
+  const [desc, setDesc]       = useState('')
+  const [color, setColor]     = useState('#478cd0')
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
 
@@ -513,17 +503,7 @@ function KbModal({ mode, kb, onClose, onDone }: {
     if (!name.trim()) return
     setLoading(true); setError('')
     try {
-      if (mode === 'create') {
-        await createKb(name.trim(), desc.trim(), color)
-      } else {
-        // PATCH endpoint (to be added to backend)
-        const res = await fetch(`/api/kb/${kb!.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name.trim(), description: desc.trim(), color }),
-        })
-        if (!res.ok) throw new Error('Failed to update knowledge base')
-      }
+      await createKb(name.trim(), desc.trim(), color)
       onDone()
     } catch (err) {
       setError((err as Error).message)
@@ -535,8 +515,8 @@ function KbModal({ mode, kb, onClose, onDone }: {
     <div className="modalOverlay">
       <div className="modalBackdrop" onClick={onClose} />
       <div className="modalCard">
-        <div className="modalTitle">{mode === 'create' ? 'New Knowledge Base' : 'Edit Knowledge Base'}</div>
-        <div className="modalSub">{mode === 'create' ? 'Create an isolated graph for a set of documents' : 'Update name, description or colour'}</div>
+        <div className="modalTitle">New Knowledge Base</div>
+        <div className="modalSub">Create an isolated graph for a set of documents</div>
         <form onSubmit={submit} className="flexCol gap12">
           <div>
             <label className="fieldLabel">Name *</label>
@@ -560,10 +540,118 @@ function KbModal({ mode, kb, onClose, onDone }: {
           <div className="flex gap8 mt8">
             <button type="button" className="ghostBtn w100" onClick={onClose}>Cancel</button>
             <button type="submit" className="blueBtn w100" disabled={loading || !name.trim()}>
-              {loading ? (mode === 'create' ? 'Creating…' : 'Saving…') : (mode === 'create' ? 'Create' : 'Save')}
+              {loading ? 'Creating…' : 'Create'}
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  )
+}
+
+// ─── Edit KB modal — wide, tabbed (Astra Docs presModal pattern) ──────────────
+
+function EditKbModal({ kb, onClose, onDone }: { kb: Kb; onClose: () => void; onDone: () => void }) {
+  const [tab, setTab] = useState<'settings' | 'ingest' | 'archive'>('settings')
+
+  // Settings tab state
+  const [name, setName]       = useState(kb.name)
+  const [desc, setDesc]       = useState(kb.description)
+  const [color, setColor]     = useState(kb.color)
+  const [loading, setLoading] = useState(false)
+  const [error, setError]     = useState('')
+
+  const saveSettings = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim()) return
+    setLoading(true); setError('')
+    try {
+      const res = await fetch(`/api/kb/${kb.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), description: desc.trim(), color }),
+      })
+      if (!res.ok) throw new Error('Failed to update knowledge base')
+      onDone()
+    } catch (err) {
+      setError((err as Error).message)
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="modalOverlay">
+      <div className="modalBackdrop" onClick={onClose} />
+      <div className="presModalWrap">
+        <div className="presModal">
+          {/* Close button */}
+          <button className="presCloseBtn" onClick={onClose} title="Close">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+
+          {/* Header */}
+          <div className="presModalHeader">
+            <div className="presModalTitle" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span className="kbDot" style={{ background: color, width: 14, height: 14 }} />
+              {kb.name}
+            </div>
+            <div className="presModalSubtitle">Knowledge base settings — ingest documents — browse archive</div>
+          </div>
+
+          {/* Tabs */}
+          <div className="kbTabs">
+            <button className={`kbTab${tab === 'settings' ? ' kbTabActive' : ''}`} onClick={() => setTab('settings')}>Settings</button>
+            <button className={`kbTab${tab === 'ingest'   ? ' kbTabActive' : ''}`} onClick={() => setTab('ingest')}>Ingest</button>
+            <button className={`kbTab${tab === 'archive'  ? ' kbTabActive' : ''}`} onClick={() => setTab('archive')}>Archive</button>
+          </div>
+
+          {/* Settings tab */}
+          {tab === 'settings' && (
+            <>
+              <form onSubmit={saveSettings} className="presForm">
+                <div className="presFieldRow">
+                  <div className="presFieldLabel">Name <span style={{ color: '#ef4444' }}>*</span></div>
+                  <input className="presFieldInput" value={name} onChange={e => setName(e.target.value)} required autoFocus />
+                </div>
+                <div className="presFieldRow">
+                  <div className="presFieldLabel">Description</div>
+                  <input className="presFieldInput" value={desc} onChange={e => setDesc(e.target.value)} placeholder="Optional description" />
+                </div>
+                <div className="presFieldRow">
+                  <div className="presFieldLabel">Color</div>
+                  <div className="flex gap8 itemsCenter">
+                    <input type="color" value={color} onChange={e => setColor(e.target.value)}
+                      style={{ width: 40, height: 40, border: '1px solid var(--border)', borderRadius: 8, padding: 2, cursor: 'pointer' }} />
+                    <span className="textSm textMuted">{color}</span>
+                  </div>
+                </div>
+                {error && <div style={{ color: '#dc2626', fontSize: 13, marginTop: 4 }}>{error}</div>}
+              </form>
+              <div className="presFooter">
+                <button className="presCancelBtn" onClick={onClose}>Cancel</button>
+                <button className="presSubmitBtn" disabled={loading || !name.trim()} onClick={saveSettings}>
+                  {loading ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Ingest tab */}
+          {tab === 'ingest' && (
+            <div style={{ marginTop: 16 }}>
+              <Ingest kbId={kb.id} onDone={onDone} />
+            </div>
+          )}
+
+          {/* Archive tab */}
+          {tab === 'archive' && (
+            <div style={{ marginTop: 16 }}>
+              <Archive kbId={kb.id} />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

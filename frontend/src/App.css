@@ -508,7 +508,7 @@ body {
 .dangerBtn:hover:not(:disabled) { background: #fecaca; }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   MODAL
+   MODAL — small (create)
 ═══════════════════════════════════════════════════════════════════════════════ */
 .modalOverlay  { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; }
 .modalBackdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.35); }
@@ -524,6 +524,41 @@ body {
 }
 .modalTitle { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
 .modalSub   { font-size: 14px; color: var(--muted); margin-bottom: 20px; }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   PRES MODAL — wide/tabbed (exact Astra Docs AddPdfDialog / GD Depth presModal)
+═══════════════════════════════════════════════════════════════════════════════ */
+.presModalWrap { position: relative; width: min(720px, 95vw); z-index: 1; }
+.presModal { background: #fff; border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 40px 80px rgba(0,0,0,0.18); position: relative; padding: 32px; }
+.presCloseBtn { position: absolute; top: 16px; right: 16px; border: none; background: transparent; cursor: pointer; color: #6b7280; padding: 4px; display: flex; align-items: center; border-radius: 6px; }
+.presCloseBtn:hover { color: #111827; background: #f3f4f6; }
+.presModalHeader { padding-bottom: 16px; margin-bottom: 0; border-bottom: 1px solid var(--border); }
+.presModalTitle    { font-size: 19px; font-weight: 500; color: #111827; margin-bottom: 4px; }
+.presModalSubtitle { font-size: 15px; color: #6b7280; }
+
+/* Tabs (exact GD Depth .kbTabs) */
+.kbTabs { display: flex; gap: 4px; padding: 0; border-bottom: 1px solid var(--border); margin-top: 16px; }
+.kbTab { background: none; border: none; padding: 8px 16px; font-size: 14px; font-weight: 500; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.kbTab:hover { color: #111827; }
+.kbTabActive { color: #478cd0; border-bottom-color: #478cd0; }
+
+/* Form inside modal */
+.presForm   { margin-bottom: 24px; margin-top: 16px; }
+.presFieldRow   { margin-bottom: 16px; }
+.presFieldLabel { font-size: 15px; color: #374151; margin-bottom: 8px; font-weight: 500; }
+.presFieldInput { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; outline: none; background: #fff; font-size: 15px; font-family: inherit; }
+.presFieldInput:focus { border-color: rgba(22,119,255,0.45); box-shadow: 0 0 0 4px rgba(22,119,255,0.12); }
+.presFileUpload { display: flex; align-items: center; gap: 12px; }
+.presFileBtn    { display: inline-flex; align-items: center; justify-content: center; padding: 10px 16px; background: #478cd0; color: #fff; border-radius: 8px; font-size: 15px; cursor: pointer; }
+.presFileBtn:hover { background: #5b9bda; }
+.presFileInput  { display: none; }
+.presFileName   { font-size: 15px; color: #6b7280; }
+.presFooter     { display: flex; justify-content: flex-end; gap: 12px; padding-top: 8px; }
+.presCancelBtn  { border: 1px solid var(--border); background: #fff; border-radius: 8px; padding: 10px 20px; font-size: 15px; color: #374151; cursor: pointer; }
+.presCancelBtn:hover { background: #f9fafb; }
+.presSubmitBtn  { border: none; background: #478cd0; border-radius: 8px; padding: 10px 20px; font-size: 15px; color: #fff; cursor: pointer; font-family: inherit; }
+.presSubmitBtn:hover:not(:disabled) { background: #5b9bda; }
+.presSubmitBtn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    FORM ELEMENTS
