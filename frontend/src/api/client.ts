@@ -48,7 +48,16 @@ export const deleteDocument = (kbId: string, sha256: string) =>
 export async function ingestPdf(
   kbId: string,
   file: File,
-  meta: { title?: string; authors?: string[]; doi?: string; year?: number },
+  meta: {
+    title?:      string
+    authors?:    string[]
+    doi?:        string
+    year?:       number
+    sourceType?: string
+    astmCode?:   string
+    journal?:    string
+    abstract?:   string
+  },
 ): Promise<IngestJob> {
   const form = new FormData()
   form.append('pdf', file)
