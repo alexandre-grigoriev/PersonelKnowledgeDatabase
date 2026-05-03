@@ -73,6 +73,17 @@ export async function ingestPdf(
   return res.json()
 }
 
+export async function ingestText(
+  kbId: string,
+  text: string,
+  meta: { title?: string; doi?: string; year?: number; pageUrl?: string; abstract?: string },
+): Promise<IngestJob> {
+  return req<IngestJob>('/ingest/text', {
+    method: 'POST',
+    body: JSON.stringify({ kbId, text, meta, source: 'upload' }),
+  })
+}
+
 export const getJobStatus = (jobId: string, kbId: string) =>
   req<IngestJob>(`/ingest/jobs/${jobId}?kbId=${kbId}`)
 

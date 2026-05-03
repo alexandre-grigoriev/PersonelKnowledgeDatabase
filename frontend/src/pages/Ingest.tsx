@@ -1,25 +1,40 @@
 import { useEffect, useRef, useState } from 'react'
-import { ingestPdf, getJobStatus } from '../api/client'
+import { ingestPdf, ingestText, getJobStatus } from '../api/client'
 import type { IngestJob } from '../types'
 import { extractPdfMeta } from '../utils/pdfMetaExtract'
 
 interface Props { kbId: string; onDone?: () => void }
 
+type FileKind = 'pdf' | 'text' | null
+
+/** Extract title from the first # heading in markdown text */
+function mdTitle(text: string): string | undefined {
+  const m = text.match(/^#\s+(.+)/m)
+  return m?.[1]?.trim()
+}
+
+/** Extract first meaningful paragraph from markdown as abstract */
+function mdAbstract(text: string): string {
+  const lines = text.split('\n').filter(l => l.trim() && !l.startsWith('#') && !l.startsWith('!'))
+  return lines.slice(0, 3).join(' ').slice(0, 800)
+}
+
 export default function Ingest({ kbId, onDone }: Props) {
   const [file, setFile]           = useState<File | null>(null)
+  const [fileKind, setFileKind]   = useState<FileKind>(null)
+  const [fileText, setFileText]   = useState('')          // content of MD/TXT file
   const [extracting, setExtracting] = useState(false)
 
-  // Core fields
-  const [sourceType, setSourceType] = useState<'publication' | 'astm_standard'>('publication')
-  const [title, setTitle]           = useState('')
-  const [authors, setAuthors]       = useState('')
-  const [year, setYear]             = useState('')
-  const [doi, setDoi]               = useState('')
+  // Shared fields
+  const [title, setTitle]     = useState('')
+  const [year, setYear]       = useState('')
+  const [doi, setDoi]         = useState('')              // DOI or Source URL
+  const [abstract, setAbstract] = useState('')
 
-  // Extended fields
-  const [astmCode, setAstmCode]     = useState('')
-  const [journal, setJournal]       = useState('')
-  const [abstract, setAbstract]     = useState('')
+  // PDF-only fields
+  const [authors, setAuthors] = useState('')
+  const [astmCode, setAstmCode] = useState('')
+  const [journal, setJournal] = useState('')
 
   const [dragging, setDragging]     = useState(false)
   const [job, setJob]               = useState<IngestJob | null>(null)
@@ -32,31 +47,40 @@ export default function Ingest({ kbId, onDone }: Props) {
   const resetFields = () => {
     setTitle(''); setAuthors(''); setYear(''); setDoi('')
     setAstmCode(''); setJournal(''); setAbstract('')
-    setSourceType('publication')
+    setFileText(''); setJob(null); setError('')
   }
 
   const pickFile = async (f: File) => {
-    if (f.type !== 'application/pdf') return
-    setFile(f)
-    setJob(null); setError('')
     resetFields()
 
-    // Auto-extract metadata from PDF
-    setExtracting(true)
-    try {
-      const meta = await extractPdfMeta(f)
-      if (meta.sourceType)           setSourceType(meta.sourceType)
-      if (meta.title)                setTitle(meta.title)
-      if (meta.authors?.length)      setAuthors(meta.authors.join(', '))
-      if (meta.year)                 setYear(String(meta.year))
-      if (meta.doi)                  setDoi(meta.doi)
-      if (meta.astmCode)             setAstmCode(meta.astmCode)
-      if (meta.journal)              setJournal(meta.journal)
-      if (meta.abstract)             setAbstract(meta.abstract)
-    } catch {
-      // Non-fatal — user fills manually
-    } finally {
-      setExtracting(false)
+    const isPdf = f.type === 'application/pdf' || f.name.endsWith('.pdf')
+    const isMd  = f.name.endsWith('.md') || f.name.endsWith('.txt') || f.type === 'text/markdown' || f.type === 'text/plain'
+
+    if (!isPdf && !isMd) return
+
+    setFile(f)
+    setFileKind(isPdf ? 'pdf' : 'text')
+
+    if (isPdf) {
+      setExtracting(true)
+      try {
+        const meta = await extractPdfMeta(f)
+        if (meta.title)           setTitle(meta.title)
+        if (meta.authors?.length) setAuthors(meta.authors.join(', '))
+        if (meta.year)            setYear(String(meta.year))
+        if (meta.doi)             setDoi(meta.doi)
+        if (meta.astmCode)        setAstmCode(meta.astmCode)
+        if (meta.journal)         setJournal(meta.journal)
+        if (meta.abstract)        setAbstract(meta.abstract)
+      } catch { /* non-fatal */ }
+      finally { setExtracting(false) }
+    } else {
+      // Read markdown / plain text
+      const text = await f.text()
+      setFileText(text)
+      const t = mdTitle(text) ?? f.name.replace(/\.[^.]+$/, '')
+      setTitle(t)
+      setAbstract(mdAbstract(text))
     }
   }
 
@@ -76,17 +100,30 @@ export default function Ingest({ kbId, onDone }: Props) {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!file) return
+    if (!file || !fileKind) return
     setSubmitting(true); setError(''); setJob(null)
     try {
-      const r = await ingestPdf(kbId, file, {
-        title:      title  || file.name,
-        authors:    authors ? authors.split(',').map(a => a.trim()).filter(Boolean) : [],
-        doi:        doi     || undefined,
-        year:       year    ? parseInt(year) : undefined,
-        sourceType,
-        astmCode:   astmCode || undefined,
-      })
+      let r: IngestJob
+      if (fileKind === 'pdf') {
+        r = await ingestPdf(kbId, file, {
+          title:    title  || file.name,
+          authors:  authors ? authors.split(',').map(a => a.trim()).filter(Boolean) : [],
+          doi:      doi     || undefined,
+          year:     year    ? parseInt(year) : undefined,
+          astmCode: astmCode || undefined,
+          journal:  journal  || undefined,
+          abstract: abstract || undefined,
+          sourceType: astmCode ? 'astm_standard' : 'publication',
+        })
+      } else {
+        r = await ingestText(kbId, fileText, {
+          title:   title  || file.name,
+          doi:     doi    || undefined,
+          year:    year   ? parseInt(year) : undefined,
+          pageUrl: doi    || undefined,
+          abstract: abstract || undefined,
+        })
+      }
       setJob(r)
       if (r.jobId) startPoll(r.jobId)
     } catch (err) {
@@ -102,52 +139,48 @@ export default function Ingest({ kbId, onDone }: Props) {
     job?.status === 'failed'  ? 'badgeError' :
     job?.status === 'running' ? 'badgeProcessing' : 'badgePending'
 
+  const isPdf  = fileKind === 'pdf'
+  const isText = fileKind === 'text'
+
   return (
     <>
       <form onSubmit={submit}>
         <div className="presForm">
 
-          {/* Drop zone */}
+          {/* Drop zone — accepts PDF and MD/TXT */}
           <div className="presFieldRow">
             <div
               className={`dropZone${dragging ? ' dropZoneActive' : ''}`}
               onDragOver={e => { e.preventDefault(); setDragging(true) }}
               onDragLeave={() => setDragging(false)}
-              onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) pickFile(f) }}
-              onClick={() => document.getElementById('pdf-input')?.click()}
+              onDrop={e => {
+                e.preventDefault(); setDragging(false)
+                const f = e.dataTransfer.files[0]; if (f) pickFile(f)
+              }}
+              onClick={() => document.getElementById('ingest-file-input')?.click()}
             >
               {file ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 20 }}>📄</span>
+                  <span style={{ fontSize: 20 }}>{isPdf ? '📄' : '🌐'}</span>
                   <div>
                     <p style={{ fontWeight: 600, color: 'var(--text)', fontSize: 14 }}>{file.name}</p>
                     <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-                      {(file.size / 1024 / 1024).toFixed(2)} MB
+                      {isPdf
+                        ? `${(file.size / 1024 / 1024).toFixed(2)} MB`
+                        : `${fileText.length.toLocaleString()} characters`}
                       {extracting && <span style={{ marginLeft: 8, color: '#478cd0' }}>· Extracting metadata…</span>}
                     </p>
                   </div>
                 </div>
               ) : (
                 <>
-                  <p className="dropZoneText">Drop a PDF here or click to browse</p>
-                  <p className="dropZoneHint">Metadata will be extracted automatically · Max 100 MB</p>
+                  <p className="dropZoneText">Drop a PDF or Markdown file here, or click to browse</p>
+                  <p className="dropZoneHint">PDF · MD · TXT — metadata extracted automatically · PDF max 100 MB</p>
                 </>
               )}
-              <input id="pdf-input" type="file" accept="application/pdf" style={{ display: 'none' }}
+              <input id="ingest-file-input" type="file" accept=".pdf,.md,.txt,text/plain,text/markdown"
+                style={{ display: 'none' }}
                 onChange={e => { const f = e.target.files?.[0]; if (f) pickFile(f) }} />
-            </div>
-          </div>
-
-          {/* Source type */}
-          <div className="presFieldRow">
-            <div className="presFieldLabel">Document type</div>
-            <div style={{ display: 'flex', gap: 20 }}>
-              {(['publication', 'astm_standard'] as const).map(v => (
-                <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 15, color: '#374151' }}>
-                  <input type="radio" value={v} checked={sourceType === v} onChange={() => setSourceType(v)} />
-                  {v === 'publication' ? 'Scientific publication' : 'ASTM standard'}
-                </label>
-              ))}
             </div>
           </div>
 
@@ -155,20 +188,23 @@ export default function Ingest({ kbId, onDone }: Props) {
           <div className="presFieldRow">
             <div className="presFieldLabel">Title</div>
             <input className="presFieldInput" value={title} onChange={e => setTitle(e.target.value)}
-              placeholder={sourceType === 'astm_standard' ? 'Standard Guide for…' : 'Paper title'} />
+              placeholder={isText ? 'Page or article title' : 'Document title'} />
           </div>
 
-          {/* ASTM designation */}
-          {sourceType === 'astm_standard' && (
+          {/* ASTM designation — PDF only, only if detected or filled */}
+          {isPdf && (
             <div className="presFieldRow">
-              <div className="presFieldLabel">ASTM designation</div>
+              <div className="presFieldLabel">
+                ASTM designation
+                <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 13 }}> (leave blank if not an ASTM standard)</span>
+              </div>
               <input className="presFieldInput" value={astmCode} onChange={e => setAstmCode(e.target.value)}
                 placeholder="ASTM E2911-23" />
             </div>
           )}
 
-          {/* Authors */}
-          {sourceType === 'publication' && (
+          {/* Authors — PDF only */}
+          {isPdf && (
             <div className="presFieldRow">
               <div className="presFieldLabel">Authors (comma-separated)</div>
               <input className="presFieldInput" value={authors} onChange={e => setAuthors(e.target.value)}
@@ -176,7 +212,7 @@ export default function Ingest({ kbId, onDone }: Props) {
             </div>
           )}
 
-          {/* Year + DOI — two columns, same left edge as all other fields */}
+          {/* Year + DOI/URL */}
           <div className="presFieldRow" style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 12 }}>
             <div>
               <div className="presFieldLabel">Year</div>
@@ -184,14 +220,14 @@ export default function Ingest({ kbId, onDone }: Props) {
                 placeholder="2024" min="1900" max="2100" />
             </div>
             <div>
-              <div className="presFieldLabel">DOI / URL</div>
+              <div className="presFieldLabel">{isText ? 'Source URL' : 'DOI / URL'}</div>
               <input className="presFieldInput" value={doi} onChange={e => setDoi(e.target.value)}
-                placeholder="10.1016/j.msea.2024.xxx or https://…" />
+                placeholder={isText ? 'https://…' : '10.1016/j.msea.2024.xxx or https://…'} />
             </div>
           </div>
 
-          {/* Journal */}
-          {sourceType === 'publication' && (
+          {/* Journal — PDF, non-ASTM only */}
+          {isPdf && !astmCode && (
             <div className="presFieldRow">
               <div className="presFieldLabel">Journal / Conference</div>
               <input className="presFieldInput" value={journal} onChange={e => setJournal(e.target.value)}
@@ -199,25 +235,25 @@ export default function Ingest({ kbId, onDone }: Props) {
             </div>
           )}
 
-          {/* Abstract */}
+          {/* Abstract / Summary */}
           <div className="presFieldRow" style={{ marginBottom: 0 }}>
             <div className="presFieldLabel">
-              Abstract&nbsp;
-              <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 13 }}>(optional — auto-extracted)</span>
+              {isText ? 'Summary' : 'Abstract'}
+              <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 13 }}> (optional — auto-extracted)</span>
             </div>
             <textarea className="presFieldInput" value={abstract} onChange={e => setAbstract(e.target.value)}
-              placeholder="Abstract text…" rows={3}
-              style={{ resize: 'vertical', fontFamily: 'inherit' }} />
+              placeholder={isText ? 'Brief description of the page…' : 'Abstract text…'}
+              rows={3} style={{ resize: 'vertical', fontFamily: 'inherit' }} />
           </div>
 
           {error && <p style={{ color: '#dc2626', fontSize: 13, marginTop: 12 }}>{error}</p>}
         </div>
 
-        {/* Footer — same pattern as Settings Save */}
+        {/* Footer — same style as Settings Save */}
         <div className="presFooter">
           <button type="submit" className="presSubmitBtn"
             disabled={!file || submitting || extracting}>
-            {submitting ? 'Processing…' : extracting ? 'Reading PDF…' : 'Ingest'}
+            {submitting ? 'Processing…' : extracting ? 'Reading file…' : 'Ingest'}
           </button>
         </div>
       </form>
