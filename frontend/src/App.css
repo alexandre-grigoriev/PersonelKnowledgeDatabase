@@ -255,15 +255,26 @@ body {
 .sidebarIconBtn {
   border: none;
   background: transparent;
-  padding: 3px;
+  padding: 4px;
   cursor: pointer;
   display: flex;
   align-items: center;
   border-radius: 4px;
   color: #9ca3af;
+  flex-shrink: 0;
 }
 .sidebarIconBtn:hover { background: #e5e7eb; color: #374151; }
 .sidebarIconBtnDanger:hover { background: #fee2e2; color: #dc2626; }
+
+/* On dark-blue active project rows — icons must be light */
+.projectRowActive .sidebarIconBtn { color: rgba(255,255,255,0.65); }
+.projectRowActive .sidebarIconBtn:hover { background: rgba(255,255,255,0.2); color: #fff; }
+.projectRowActive .sidebarIconBtnDanger:hover { background: rgba(220,38,38,0.3); color: #fca5a5; }
+
+/* On light-blue active chat rows — boost contrast */
+.chatRowActive .sidebarIconBtn { color: #5b8ec4; }
+.chatRowActive .sidebarIconBtn:hover { background: rgba(71,140,208,0.15); color: #1e40af; }
+.chatRowActive .sidebarIconBtnDanger:hover { background: #fee2e2; color: #dc2626; }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    CHAT PANEL  (exact GD Depth)
