@@ -103,120 +103,128 @@ export default function Ingest({ kbId, onDone }: Props) {
     job?.status === 'running' ? 'badgeProcessing' : 'badgePending'
 
   return (
-    <div className="flexCol gap20">
-      <form onSubmit={submit} className="flexCol gap16">
+    <>
+      <form onSubmit={submit}>
+        <div className="presForm">
 
-        {/* Drop zone */}
-        <div
-          className={`dropZone${dragging ? ' dropZoneActive' : ''}`}
-          onDragOver={e => { e.preventDefault(); setDragging(true) }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) pickFile(f) }}
-          onClick={() => document.getElementById('pdf-input')?.click()}
-        >
-          {file ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 20 }}>📄</span>
-              <div>
-                <p style={{ fontWeight: 600, color: 'var(--text)', fontSize: 14 }}>{file.name}</p>
-                <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-                  {(file.size / 1024 / 1024).toFixed(2)} MB
-                  {extracting && <span style={{ marginLeft: 8, color: '#478cd0' }}>· Extracting metadata…</span>}
-                </p>
-              </div>
+          {/* Drop zone */}
+          <div className="presFieldRow">
+            <div
+              className={`dropZone${dragging ? ' dropZoneActive' : ''}`}
+              onDragOver={e => { e.preventDefault(); setDragging(true) }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) pickFile(f) }}
+              onClick={() => document.getElementById('pdf-input')?.click()}
+            >
+              {file ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 20 }}>📄</span>
+                  <div>
+                    <p style={{ fontWeight: 600, color: 'var(--text)', fontSize: 14 }}>{file.name}</p>
+                    <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                      {(file.size / 1024 / 1024).toFixed(2)} MB
+                      {extracting && <span style={{ marginLeft: 8, color: '#478cd0' }}>· Extracting metadata…</span>}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="dropZoneText">Drop a PDF here or click to browse</p>
+                  <p className="dropZoneHint">Metadata will be extracted automatically · Max 100 MB</p>
+                </>
+              )}
+              <input id="pdf-input" type="file" accept="application/pdf" style={{ display: 'none' }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) pickFile(f) }} />
             </div>
-          ) : (
-            <>
-              <p className="dropZoneText">Drop a PDF here or click to browse</p>
-              <p className="dropZoneHint">Metadata will be extracted automatically · Max 100 MB</p>
-            </>
+          </div>
+
+          {/* Source type */}
+          <div className="presFieldRow">
+            <div className="presFieldLabel">Document type</div>
+            <div style={{ display: 'flex', gap: 20 }}>
+              {(['publication', 'astm_standard'] as const).map(v => (
+                <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 15, color: '#374151' }}>
+                  <input type="radio" value={v} checked={sourceType === v} onChange={() => setSourceType(v)} />
+                  {v === 'publication' ? 'Scientific publication' : 'ASTM standard'}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Title */}
+          <div className="presFieldRow">
+            <div className="presFieldLabel">Title</div>
+            <input className="presFieldInput" value={title} onChange={e => setTitle(e.target.value)}
+              placeholder={sourceType === 'astm_standard' ? 'Standard Guide for…' : 'Paper title'} />
+          </div>
+
+          {/* ASTM designation */}
+          {sourceType === 'astm_standard' && (
+            <div className="presFieldRow">
+              <div className="presFieldLabel">ASTM designation</div>
+              <input className="presFieldInput" value={astmCode} onChange={e => setAstmCode(e.target.value)}
+                placeholder="ASTM E2911-23" />
+            </div>
           )}
-          <input id="pdf-input" type="file" accept="application/pdf" style={{ display: 'none' }}
-            onChange={e => { const f = e.target.files?.[0]; if (f) pickFile(f) }} />
+
+          {/* Authors */}
+          {sourceType === 'publication' && (
+            <div className="presFieldRow">
+              <div className="presFieldLabel">Authors (comma-separated)</div>
+              <input className="presFieldInput" value={authors} onChange={e => setAuthors(e.target.value)}
+                placeholder="Smith J., Doe A." />
+            </div>
+          )}
+
+          {/* Year + DOI — two columns, same left edge as all other fields */}
+          <div className="presFieldRow" style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 12 }}>
+            <div>
+              <div className="presFieldLabel">Year</div>
+              <input className="presFieldInput" type="number" value={year} onChange={e => setYear(e.target.value)}
+                placeholder="2024" min="1900" max="2100" />
+            </div>
+            <div>
+              <div className="presFieldLabel">DOI / URL</div>
+              <input className="presFieldInput" value={doi} onChange={e => setDoi(e.target.value)}
+                placeholder="10.1016/j.msea.2024.xxx or https://…" />
+            </div>
+          </div>
+
+          {/* Journal */}
+          {sourceType === 'publication' && (
+            <div className="presFieldRow">
+              <div className="presFieldLabel">Journal / Conference</div>
+              <input className="presFieldInput" value={journal} onChange={e => setJournal(e.target.value)}
+                placeholder="Journal of Materials Science" />
+            </div>
+          )}
+
+          {/* Abstract */}
+          <div className="presFieldRow" style={{ marginBottom: 0 }}>
+            <div className="presFieldLabel">
+              Abstract&nbsp;
+              <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 13 }}>(optional — auto-extracted)</span>
+            </div>
+            <textarea className="presFieldInput" value={abstract} onChange={e => setAbstract(e.target.value)}
+              placeholder="Abstract text…" rows={3}
+              style={{ resize: 'vertical', fontFamily: 'inherit' }} />
+          </div>
+
+          {error && <p style={{ color: '#dc2626', fontSize: 13, marginTop: 12 }}>{error}</p>}
         </div>
 
-        {/* Source type */}
-        <div>
-          <label className="fieldLabel">Document type</label>
-          <div style={{ display: 'flex', gap: 12 }}>
-            {(['publication', 'astm_standard'] as const).map(v => (
-              <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 14 }}>
-                <input type="radio" value={v} checked={sourceType === v} onChange={() => setSourceType(v)} />
-                {v === 'publication' ? 'Scientific publication' : 'ASTM standard'}
-              </label>
-            ))}
-          </div>
+        {/* Footer — same pattern as Settings Save */}
+        <div className="presFooter">
+          <button type="submit" className="presSubmitBtn"
+            disabled={!file || submitting || extracting}>
+            {submitting ? 'Processing…' : extracting ? 'Reading PDF…' : 'Ingest'}
+          </button>
         </div>
-
-        {/* Title */}
-        <div>
-          <label className="fieldLabel">Title</label>
-          <input className="authInput" value={title} onChange={e => setTitle(e.target.value)}
-            placeholder={sourceType === 'astm_standard'
-              ? 'Standard Guide for Relative Intensity Correction…'
-              : 'Paper title'} />
-        </div>
-
-        {/* ASTM code — shown for ASTM standards */}
-        {sourceType === 'astm_standard' && (
-          <div>
-            <label className="fieldLabel">ASTM designation</label>
-            <input className="authInput" value={astmCode} onChange={e => setAstmCode(e.target.value)}
-              placeholder="ASTM E2911-23" />
-          </div>
-        )}
-
-        {/* Authors — shown for publications */}
-        {sourceType === 'publication' && (
-          <div>
-            <label className="fieldLabel">Authors (comma-separated)</label>
-            <input className="authInput" value={authors} onChange={e => setAuthors(e.target.value)}
-              placeholder="Smith J., Doe A." />
-          </div>
-        )}
-
-        {/* Year + DOI */}
-        <div className="flex gap12">
-          <div style={{ flex: 1 }}>
-            <label className="fieldLabel">Year</label>
-            <input className="authInput" type="number" value={year} onChange={e => setYear(e.target.value)}
-              placeholder="2024" min="1900" max="2100" />
-          </div>
-          <div style={{ flex: 2 }}>
-            <label className="fieldLabel">DOI</label>
-            <input className="authInput" value={doi} onChange={e => setDoi(e.target.value)}
-              placeholder="10.1016/j.msea.2024.xxx" />
-          </div>
-        </div>
-
-        {/* Journal — shown for publications */}
-        {sourceType === 'publication' && (
-          <div>
-            <label className="fieldLabel">Journal / Conference</label>
-            <input className="authInput" value={journal} onChange={e => setJournal(e.target.value)}
-              placeholder="Journal of Materials Science" />
-          </div>
-        )}
-
-        {/* Abstract */}
-        <div>
-          <label className="fieldLabel">Abstract <span style={{ color: 'var(--muted)', fontWeight: 400, textTransform: 'none' }}>(optional — auto-extracted)</span></label>
-          <textarea className="authInput" value={abstract} onChange={e => setAbstract(e.target.value)}
-            placeholder="Abstract text…"
-            rows={3} style={{ resize: 'vertical', fontFamily: 'inherit', fontSize: 14 }} />
-        </div>
-
-        {error && <p style={{ color: '#dc2626', fontSize: 13 }}>{error}</p>}
-
-        <button type="submit" className="blueBtn w100" disabled={!file || submitting || extracting}
-          style={{ justifyContent: 'center', padding: '11px 0' }}>
-          {submitting ? 'Uploading…' : extracting ? 'Reading PDF…' : 'Start ingestion'}
-        </button>
       </form>
 
       {/* Job status */}
       {job && (
-        <div className="cardLite" style={{ padding: 20 }}>
+        <div style={{ margin: '16px 0', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
           <div className="flex itemsCenter gap8 mb12">
             <span style={{ fontWeight: 600, fontSize: 15 }}>Ingestion job</span>
             <span className={`badge ${statusBadgeClass}`}>{job.status}</span>
@@ -227,9 +235,7 @@ export default function Ingest({ kbId, onDone }: Props) {
           </div>
           {job.step && <p className="textSm textMuted">Step: {job.step}</p>}
           {job.status === 'done' && (
-            <p style={{ color: '#16a34a', fontSize: 13, marginTop: 8 }}>
-              ✓ Document ingested — {job.chunksDone} chunks created
-            </p>
+            <p style={{ color: '#16a34a', fontSize: 13, marginTop: 8 }}>✓ Document ingested — {job.chunksDone} chunks created</p>
           )}
           {job.status === 'failed' && (
             <p style={{ color: '#dc2626', fontSize: 13, marginTop: 8 }}>✗ {job.error}</p>
@@ -237,6 +243,6 @@ export default function Ingest({ kbId, onDone }: Props) {
           {job.jobId && <p className="textXs textMuted mt8" style={{ fontFamily: 'monospace' }}>{job.jobId}</p>}
         </div>
       )}
-    </div>
+    </>
   )
 }
