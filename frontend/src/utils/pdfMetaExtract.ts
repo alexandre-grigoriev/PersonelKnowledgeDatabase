@@ -6,11 +6,9 @@
 
 import * as pdfjsLib from 'pdfjs-dist'
 
-// Vite resolves this URL at build time — no separate copy step needed
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url,
-).toString()
+// Use unpkg CDN for the worker — avoids Vite bundling complications with Web Workers
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs'
 
 export interface ExtractedMeta {
   title?:      string
