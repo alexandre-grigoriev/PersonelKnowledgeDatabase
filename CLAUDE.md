@@ -1,25 +1,23 @@
-# Scientific Knowledge Base — Spec Racine (CLAUDE.md)
+# Scientific Knowledge Base — Root Spec (CLAUDE.md)
 
 ## Vision
-Application desktop tout-en-un (Mac + Windows) permettant de gérer plusieurs knowledge bases
-thématiques à partir de publications scientifiques PDF et de standards ASTM. Inclut une
-extension Chrome pour capturer du contenu web directement.
+An all-in-one desktop application (Mac + Windows) for managing multiple thematic knowledge bases built from scientific PDF publications and ASTM standards. Includes a Chrome extension for capturing web content directly.
 
-## Stack technique
-| Composant      | Technologie                                              |
+## Tech Stack
+| Component      | Technology                                               |
 |----------------|----------------------------------------------------------|
-| Desktop shell  | Electron 30+ (bundle Node.js + Neo4j embedded)           |
+| Desktop shell  | Electron 30+ (bundled Node.js + embedded Neo4j)          |
 | Backend API    | Node.js 20 / Express / CommonJS                          |
 | LLM            | Google Gemini 2.0 Flash (gemini-2.0-flash-exp)           |
 | Embeddings     | gemini-embedding-001 (3072 dimensions)                   |
-| Graph + Vector | Neo4j 5.x Community (instance par KB)                   |
+| Graph + Vector | Neo4j 5.x Community (one instance per KB)                |
 | PDF parsing    | pdf-parse + pdfplumber (Python subprocess)               |
-| Archive        | Filesystem local (~/scientific-kb/)                      |
-| Metadata/Queue | SQLite 3 (une DB par KB)                                 |
+| Archive        | Local filesystem (~/scientific-kb/)                      |
+| Metadata/Queue | SQLite 3 (one DB per KB)                                 |
 | Frontend UI    | React 19 / TypeScript / Tailwind / Vite (frontend/)      |
 | Extension      | Chrome Manifest V3 (Vanilla JS)                          |
 
-## Layout du dépôt
+## Repository Layout
 ```
 /
 ├── CLAUDE.md
@@ -60,7 +58,7 @@ extension Chrome pour capturer du contenu web directement.
 │   └── utils/
 │       ├── config.js
 │       ├── geminiClient.js
-│       ├── neo4jClient.js      singleton par KB
+│       ├── neo4jClient.js      singleton per KB
 │       ├── archiveManager.js
 │       └── logger.js           pino
 ├── chrome-extension/
@@ -71,13 +69,13 @@ extension Chrome pour capturer du contenu web directement.
 │   ├── popup.js
 │   └── icons/
 ├── scripts/
-│   ├── initNeo4j.js            DDL indexes + contraintes
-│   └── rebuildKb.js            ré-ingestion depuis archive
-└── data/                       créé à l'installation
+│   ├── initNeo4j.js            DDL indexes + constraints
+│   └── rebuildKb.js            re-ingestion from archive
+└── data/                       created at install time
     └── [kb-name]/
-        ├── pdfs/               archive source of truth
-        ├── metadata.db         SQLite par KB
-        └── neo4j/              data Neo4j par KB
+        ├── pdfs/               archive — source of truth
+        ├── metadata.db         SQLite per KB
+        └── neo4j/              Neo4j data per KB
 ```
 
 ## Frontend (frontend/)
@@ -92,28 +90,28 @@ frontend/
 ├── tailwind.config.ts
 └── src/
     ├── main.tsx
-    ├── App.tsx            React Router v6 — 4 routes
+    ├── App.tsx            state-based navigation, 3 pages
     ├── index.css
     ├── api/client.ts      typed fetch wrappers for all endpoints
     ├── types/index.ts     Kb, ArchivedDoc, IngestJob, QueryResult …
     ├── components/
-    │   ├── Layout.tsx     top nav + KB selector
-    │   └── KbSelector.tsx shared KB picker (localStorage)
+    │   └── ui/TopSelect.tsx
+    ├── hooks/
+    │   └── useSpeechRecognition.ts
     └── pages/
-        ├── KbDashboard.tsx  list + create + stats + delete
-        ├── Ingest.tsx       drag-and-drop PDF + metadata + progress bar
-        ├── Query.tsx        question input + cited answer + source cards
+        ├── Ingest.tsx       drag-and-drop PDF/MD + metadata + progress bar
+        ├── Query.tsx        chat panel + cited answer + source cards
         └── Archive.tsx      searchable document table + delete
 ```
 
 Dev server: `cd frontend && npm install && npm run dev` → http://localhost:5173
 Vite proxies all `/api/*` calls to the backend on port 3000.
 
-## Règles absolues
-1. Appels Gemini séquentiels uniquement — jamais en parallèle
-2. Neo4j MERGE uniquement — jamais CREATE direct
-3. Pas de console.log en production — utiliser logger (pino)
-4. JSDoc sur toutes les fonctions publiques (backend JS uniquement)
-5. Chunking heuristique d'abord — structure détectée avant appel LLM
-6. Archive = source of truth — toute ingestion copie d'abord le PDF
-7. Multi-KB = isolation complète — chaque KB a son propre répertoire Neo4j + SQLite
+## Absolute Rules
+1. Gemini calls must be sequential only — never in parallel
+2. Neo4j MERGE only — never direct CREATE
+3. No console.log in production — use the pino logger
+4. JSDoc on all public functions (backend JS only)
+5. Heuristic chunking first — detect structure before calling the LLM
+6. Archive is the source of truth — every ingestion copies the file first
+7. Multi-KB = full isolation — each KB has its own Neo4j directory + SQLite

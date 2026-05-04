@@ -1,20 +1,20 @@
-# Extension Chrome — Scientific KB Clipper (CHROME_EXTENSION.md)
+# Chrome Extension — Scientific KB Clipper (CHROME_EXTENSION.md)
 
-## Vue d'ensemble
-Extension Chrome (Manifest V3) permettant depuis n'importe quelle page web de :
-1. Détecter si la page est un article scientifique ou contient un lien PDF
-2. Afficher un popup pour choisir la KB cible et l'action
-3. Capturer le contenu textuel de la page OU télécharger le PDF lié
-4. Envoyer au backend local (http://localhost:3000)
+## Overview
+Chrome extension (Manifest V3) that allows from any web page to:
+1. Detect whether the page is a scientific article or contains a PDF link
+2. Display a popup to choose the target KB and the action
+3. Capture the text content of the page OR download the linked PDF
+4. Send to the local backend (http://localhost:3000)
 
-## Fichiers
+## Files
 ```
 chrome-extension/
 ├── manifest.json
-├── background.js       ← service worker (téléchargement + API call)
-├── content.js          ← injecté dans la page (détection + extraction)
-├── popup.html          ← UI du popup
-├── popup.js            ← logique popup
+├── background.js       ← service worker (download + API call)
+├── content.js          ← injected into the page (detection + extraction)
+├── popup.html          ← popup UI
+├── popup.js            ← popup logic
 ├── styles/popup.css
 └── icons/
     ├── icon16.png
@@ -28,7 +28,7 @@ chrome-extension/
   "manifest_version": 3,
   "name": "Scientific KB Clipper",
   "version": "1.0.0",
-  "description": "Capture articles scientifiques et PDFs dans votre knowledge base",
+  "description": "Capture scientific articles and PDFs into your knowledge base",
   "permissions": [
     "activeTab",
     "downloads",
@@ -59,21 +59,21 @@ chrome-extension/
 }
 ```
 
-## content.js — Détection de la page
+## content.js — Page detection
 
-Exécuté dans chaque page. Détecte et extrait automatiquement.
+Executed in every page. Detects and extracts automatically.
 
-### Détection PDF
+### PDF detection
 ```javascript
 /**
- * Cherche des liens PDF dans la page (liens directs, boutons "Download PDF",
- * métadonnées Highwire, Dublin Core, OpenGraph).
+ * Searches for PDF links on the page (direct links, "Download PDF" buttons,
+ * Highwire, Dublin Core, OpenGraph metadata).
  * @returns {Array<{url: string, label: string, confidence: number}>}
  */
 function detectPdfLinks() {
   const results = [];
 
-  // 1. Balises <meta> Highwire Press (Google Scholar, PubMed, etc.)
+  // 1. Highwire Press <meta> tags (Google Scholar, PubMed, etc.)
   const citationPdf = document.querySelector('meta[name="citation_pdf_url"]');
   if (citationPdf) results.push({
     url: citationPdf.content,
@@ -81,16 +81,16 @@ function detectPdfLinks() {
     confidence: 0.99
   });
 
-  // 2. Liens <a> pointant vers .pdf
+  // 2. <a> links pointing to .pdf
   document.querySelectorAll('a[href$=".pdf"], a[href*="pdf"]').forEach(a => {
     if (a.href && a.href.startsWith('http')) {
       results.push({ url: a.href, label: a.textContent.trim() || 'PDF', confidence: 0.85 });
     }
   });
 
-  // 3. Boutons "Download PDF" (texte)
+  // 3. "Download PDF" buttons (text-based)
   document.querySelectorAll('a, button').forEach(el => {
-    if (/download\s+pdf|télécharger\s+pdf|full\s+text\s+pdf/i.test(el.textContent)) {
+    if (/download\s+pdf|full\s+text\s+pdf/i.test(el.textContent)) {
       const href = el.href || el.dataset.href;
       if (href) results.push({ url: href, label: 'Download PDF', confidence: 0.9 });
     }
@@ -100,11 +100,11 @@ function detectPdfLinks() {
 }
 ```
 
-### Extraction des métadonnées de la page
+### Page metadata extraction
 ```javascript
 /**
- * Extrait les métadonnées bibliographiques depuis les balises meta.
- * Compatible avec Highwire Press, Dublin Core, OpenGraph.
+ * Extracts bibliographic metadata from meta tags.
+ * Compatible with Highwire Press, Dublin Core, OpenGraph.
  * @returns {PageMeta}
  */
 function extractPageMeta() {
@@ -130,12 +130,12 @@ function extractPageMeta() {
 }
 
 /**
- * Extrait le texte principal de la page (article body).
- * Utilise une heuristique de densité de texte.
+ * Extracts the main text of the page (article body).
+ * Uses a text-density heuristic.
  * @returns {string}
  */
 function extractMainText() {
-  // Priorité aux sélecteurs sémantiques courants
+  // Prefer common semantic selectors
   const selectors = [
     'article', '[role="main"]', '.article-body', '.fulltext',
     '#article-content', '.paper-content', 'main'
@@ -144,11 +144,11 @@ function extractMainText() {
     const el = document.querySelector(sel);
     if (el && el.textContent.length > 500) return el.textContent.trim();
   }
-  // Fallback : bloc de texte le plus dense
+  // Fallback: densest text block
   return document.body.innerText.trim();
 }
 
-// Écouter les messages du popup
+// Listen for messages from the popup
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'SCAN_PAGE') {
     sendResponse({
@@ -163,16 +163,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 ```
 
-## popup.js — Logique du popup
+## popup.js — Popup logic
 
-### État du popup
+### Popup state
 ```javascript
-let pageInfo = null;   // résultat du scan de la page
-let kbList = [];       // liste des KBs disponibles
+let pageInfo = null;       // result of the page scan
+let kbList = [];           // list of available KBs
 let selectedKbId = localStorage.getItem('lastKbId') || null;
 let selectedPdfUrl = null;
 
-// Au chargement du popup
+// On popup load
 document.addEventListener('DOMContentLoaded', async () => {
   await loadKbList();
   await scanCurrentPage();
@@ -180,39 +180,39 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 ```
 
-### Chargement des KBs depuis le backend local
+### Loading KBs from the local backend
 ```javascript
 async function loadKbList() {
   try {
     const res = await fetch('http://localhost:3000/api/kb');
     kbList = await res.json();
   } catch (e) {
-    showError('Backend non disponible. Ouvrez l\'application Scientific KB.');
+    showError('Backend unavailable. Open the Scientific KB application.');
   }
 }
 ```
 
-### Actions disponibles dans le popup
-1. **"Enregistrer le PDF"** : si un lien PDF est détecté → service worker télécharge + envoie
-2. **"Capturer la page"** : extrait le texte HTML → envoie comme document texte
-3. **Choix de la KB cible** : dropdown avec les KBs disponibles
+### Available popup actions
+1. **"Save PDF"**: if a PDF link is detected → service worker downloads + sends
+2. **"Capture page"**: extracts HTML text → sends as text document
+3. **Target KB selector**: dropdown with available KBs
 
 ## background.js — Service Worker
 
 ```javascript
 /**
- * Télécharge un PDF depuis une URL et l'envoie au backend.
+ * Downloads a PDF from a URL and sends it to the backend.
  * @param {string} pdfUrl
  * @param {string} kbId
  * @param {Object} meta
  */
 async function downloadAndIngest(pdfUrl, kbId, meta) {
-  // 1. Télécharger le PDF en blob
+  // 1. Download PDF as blob
   const response = await fetch(pdfUrl);
   if (!response.ok) throw new Error(`Download failed: ${response.status}`);
   const blob = await response.blob();
 
-  // 2. Construire FormData
+  // 2. Build FormData
   const formData = new FormData();
   formData.append('pdf', blob, meta.title ? `${meta.title}.pdf` : 'document.pdf');
   formData.append('kbId', kbId);
@@ -220,7 +220,7 @@ async function downloadAndIngest(pdfUrl, kbId, meta) {
   formData.append('source', 'chrome-extension');
   formData.append('sourceUrl', pdfUrl);
 
-  // 3. Envoyer au backend local
+  // 3. Send to local backend
   const res = await fetch('http://localhost:3000/api/ingest', {
     method: 'POST',
     body: formData
@@ -229,7 +229,7 @@ async function downloadAndIngest(pdfUrl, kbId, meta) {
 }
 
 /**
- * Envoie un contenu textuel (page web) au backend comme document.
+ * Sends text content (web page) to the backend as a document.
  * @param {string} text
  * @param {string} kbId
  * @param {Object} meta
@@ -243,7 +243,7 @@ async function ingestPageText(text, kbId, meta) {
   return res.json();
 }
 
-// Écouter les messages du popup
+// Listen for messages from the popup
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'INGEST_PDF') {
     downloadAndIngest(msg.pdfUrl, msg.kbId, msg.meta)
@@ -260,7 +260,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 ```
 
-## popup.html — Structure UI
+## popup.html — UI structure
 ```html
 <!DOCTYPE html>
 <html>
@@ -272,34 +272,34 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   <header>
     <img src="icons/icon48.png" width="24">
     <span>Scientific KB Clipper</span>
-    <span id="status-dot"></span>  <!-- vert si backend OK, rouge sinon -->
+    <span id="status-dot"></span>  <!-- green if backend OK, red otherwise -->
   </header>
 
-  <!-- Sélecteur de KB -->
+  <!-- KB selector -->
   <section id="kb-selector">
-    <label>Knowledge Base cible :</label>
+    <label>Target Knowledge Base:</label>
     <select id="kb-select"></select>
   </section>
 
-  <!-- Résultat du scan -->
+  <!-- Scan result -->
   <section id="scan-result">
-    <!-- Rempli dynamiquement -->
+    <!-- Filled dynamically -->
   </section>
 
   <!-- Actions -->
   <section id="actions">
     <button id="btn-pdf" class="primary" style="display:none">
-      ⬇ Enregistrer le PDF
+      ⬇ Save PDF
     </button>
     <button id="btn-text" class="secondary" style="display:none">
-      📄 Capturer la page
+      📄 Capture page
     </button>
   </section>
 
-  <!-- Progression -->
+  <!-- Progress -->
   <section id="progress" style="display:none">
     <div class="progress-bar"><div id="progress-fill"></div></div>
-    <span id="progress-label">En attente...</span>
+    <span id="progress-label">Waiting...</span>
   </section>
 
   <script src="popup.js"></script>
@@ -307,7 +307,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 </html>
 ```
 
-## Endpoint backend pour l'extension (routes/ingest.js)
+## Backend endpoints for the extension (routes/ingest.js)
 
 ```
 POST /api/ingest
@@ -324,10 +324,10 @@ GET /api/ingest/jobs/:jobId
   Response: { jobId, status, step, progress, error }
 ```
 
-## Sécurité
-- L'extension ne communique qu'avec `http://localhost:3000` — jamais vers l'extérieur
-- Pas de données utilisateur envoyées vers des serveurs tiers
-- CORS configuré côté backend pour accepter uniquement les requêtes de l'extension :
+## Security
+- The extension communicates only with `http://localhost:3000` — never with external servers
+- No user data is sent to third-party servers
+- CORS is configured on the backend to accept only requests from the extension:
   ```javascript
   app.use(cors({ origin: (origin, cb) => {
     if (!origin || origin.startsWith('chrome-extension://')) cb(null, true);

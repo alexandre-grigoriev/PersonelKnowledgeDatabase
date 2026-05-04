@@ -1,26 +1,26 @@
-# Séquence d'implémentation — Ordre pour Claude Code (RAG_PIPELINE.md)
+# Implementation Sequence — Order for Claude Code (RAG_PIPELINE.md)
 
-## Ordre d'implémentation recommandé
+## Recommended implementation order
 
-Implémenter fichier par fichier, compiler sans erreur avant de passer au suivant.
+Implement file by file, compile without errors before moving to the next.
 
-### Phase 1 — Fondations
-1. `backend/utils/config.js` — variables d'env + chemins platform-specific
-2. `backend/utils/logger.js` — pino logger (remplace console.log partout)
-3. `backend/utils/geminiClient.js` — wrapper Gemini (generateContent + embedContent)
-4. `backend/utils/archiveManager.js` — gestion archive PDF + index.json
-5. `scripts/initNeo4j.js` — DDL constraints + indexes (vecteur + fulltext)
-6. `backend/utils/neo4jClient.js` — driver singleton par KB + startNeo4jForKb()
+### Phase 1 — Foundations
+1. `backend/utils/config.js` — env variables + platform-specific paths
+2. `backend/utils/logger.js` — pino logger (replaces console.log everywhere)
+3. `backend/utils/geminiClient.js` — Gemini wrapper (generateContent + embedContent)
+4. `backend/utils/archiveManager.js` — PDF archive management + index.json
+5. `scripts/initNeo4j.js` — DDL constraints + indexes (vector + fulltext)
+6. `backend/utils/neo4jClient.js` — driver singleton per KB + startNeo4jForKb()
 
 ### Phase 2 — Multi-KB
 7. `backend/routes/kb.js` — CRUD KBs (GET/POST/DELETE + stats)
 8. `backend/server.js` — Express app + middleware (multer, cors, pino-http)
 
 ### Phase 3 — Ingestion pipeline
-9.  `backend/ingestion/pdfParser.js` — extraction layout via pdfplumber subprocess
-10. `backend/ingestion/chunker.js` — chunking heuristique (publications + ASTM)
-11. `backend/ingestion/llmEnricher.js` — enrichissement Gemini par chunk
-12. `backend/ingestion/embedder.js` — embeddings Gemini (séquentiels)
+9.  `backend/ingestion/pdfParser.js` — layout extraction via pdfplumber subprocess
+10. `backend/ingestion/chunker.js` — heuristic chunking (publications + ASTM)
+11. `backend/ingestion/llmEnricher.js` — Gemini enrichment per chunk
+12. `backend/ingestion/embedder.js` — Gemini embeddings (sequential)
 13. `backend/ingestion/graphWriter.js` — MERGE Neo4j (Document, Section, Chunk, Entity)
 14. `backend/routes/ingest.js` — POST /api/ingest (multipart) + POST /api/ingest/text
 
@@ -28,27 +28,27 @@ Implémenter fichier par fichier, compiler sans erreur avant de passer au suivan
 15. `backend/routes/archive.js` — GET archive, preview, DELETE, rebuild SSE
 
 ### Phase 5 — Query pipeline
-16. `backend/retrieval/queryPlanner.js` — décomposition LLM de la question
+16. `backend/retrieval/queryPlanner.js` — LLM decomposition of the question
 17. `backend/retrieval/hybridRetriever.js` — vector search + graph expansion Cypher
-18. `backend/retrieval/synthesizer.js` — synthèse LLM avec citations
+18. `backend/retrieval/synthesizer.js` — LLM synthesis with citations
 19. `backend/routes/query.js` — POST /api/query
 
 ### Phase 6 — Electron shell
-20. `app/main.js` — process principal, démarrage services, tray
+20. `app/main.js` — main process, service startup, tray
 21. `app/preload.js` — IPC bridge contextIsolation
-22. `app/tray.js` — icône système + menu
+22. `app/tray.js` — system tray icon + menu
 
-### Phase 7 — Extension Chrome
-23. `chrome-extension/content.js` — détection PDF + extraction méta
+### Phase 7 — Chrome Extension
+23. `chrome-extension/content.js` — PDF detection + metadata extraction
 24. `chrome-extension/background.js` — service worker download + fetch
 25. `chrome-extension/popup.js` + `popup.html` — UI
 
-### Phase 8 — Scripts utilitaires
-26. `scripts/rebuildKb.js` — ré-ingestion depuis archive
+### Phase 8 — Utility scripts
+26. `scripts/rebuildKb.js` — re-ingestion from archive
 
 ---
 
-## Prompt Gemini — Enrichissement chunk
+## Gemini prompt — Chunk enrichment
 
 ```
 System: You are a scientific knowledge extraction expert. Extract structured information
@@ -81,7 +81,7 @@ Respond ONLY with:
 }
 ```
 
-## Prompt Gemini — Query planning
+## Gemini prompt — Query planning
 
 ```
 System: You are a scientific document retrieval expert.
@@ -101,7 +101,7 @@ Respond with:
 }
 ```
 
-## Prompt Gemini — Synthèse finale
+## Gemini prompt — Final synthesis
 
 ```
 System: You are a scientific assistant answering questions based on retrieved document

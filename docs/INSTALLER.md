@@ -1,55 +1,54 @@
-# Installateur Cross-Platform — Mac & Windows (INSTALLER.md)
+# Cross-Platform Installer — Mac & Windows (INSTALLER.md)
 
-## Approche : Electron + Services Bundlés
+## Approach: Electron + Bundled Services
 
-Electron encapsule l'UI React, le backend Express, et orchestre les services Neo4j
-et Python. L'utilisateur installe un seul `.dmg` (Mac) ou `.exe` (Windows) et
-n'a besoin d'aucun prérequis technique.
+Electron wraps the React UI, the Express backend, and orchestrates the Neo4j and Python services.
+The user installs a single `.dmg` (Mac) or `.exe` (Windows) with no technical prerequisites.
 
-## Ce qui est bundlé dans l'installateur
+## What is bundled in the installer
 - Node.js (via Electron)
-- Backend Express (CommonJS)
-- Frontend React (buildé statiquement, servi par Express)
-- Neo4j Community 5.x (binaires téléchargés au premier lancement)
-- Python 3.11 (portable, pour pdfplumber)
-- Dépendances Python : pdfplumber, pdfminer.six
+- Express backend (CommonJS)
+- React frontend (statically built, served by Express)
+- Neo4j Community 5.x (binaries downloaded on first launch)
+- Python 3.11 (portable, for pdfplumber)
+- Python dependencies: pdfplumber, pdfminer.six
 
-## Structure du package Electron
+## Electron package structure
 ```
 ScientificKB.app (Mac) / ScientificKB (Windows)
 ├── resources/
-│   ├── app/                    ← code Node.js
-│   │   ├── app/main.js    ← main process Electron
+│   ├── app/                    ← Node.js code
+│   │   ├── app/main.js         ← Electron main process
 │   │   ├── backend/            ← Express backend
-│   │   └── frontend/build/     ← React buildé
-│   ├── neo4j/                  ← binaires Neo4j (téléchargés au setup)
+│   │   └── frontend/build/     ← Built React app
+│   ├── neo4j/                  ← Neo4j binaries (downloaded at setup)
 │   │   ├── bin/neo4j
 │   │   └── conf/neo4j.conf.template
-│   └── python/                 ← Python portable
+│   └── python/                 ← Portable Python
 │       ├── python (Mac) / python.exe (Win)
 │       └── lib/site-packages/pdfplumber/
 └── ...
 ```
 
-## app/main.js — Process principal Electron
+## app/main.js — Electron main process
 
-### Séquence de démarrage
+### Startup sequence
 ```javascript
 app.on('ready', async () => {
-  await ensureDataDirectory();      // créer ~/scientific-kb/ si absent
-  await checkFirstRun();            // afficher wizard si première utilisation
-  await startBackend();             // lancer Express sur port 3000
-  await loadKnowledgeBases();       // démarrer Neo4j pour les KBs existantes
-  createMainWindow();               // afficher l'UI
-  createTrayIcon();                 // icône dans la barre système
+  await ensureDataDirectory();      // create ~/scientific-kb/ if absent
+  await checkFirstRun();            // show wizard on first launch
+  await startBackend();             // start Express on port 3000
+  await loadKnowledgeBases();       // start Neo4j for existing KBs
+  createMainWindow();               // show the UI
+  createTrayIcon();                 // icon in the system tray
 });
 ```
 
-### Gestion des services Neo4j
+### Neo4j service management
 ```javascript
 /**
- * Démarre une instance Neo4j pour une KB donnée.
- * Assigne un port dynamique entre 7687 et 7787.
+ * Starts a Neo4j instance for a given KB.
+ * Assigns a dynamic port between 7687 and 7787.
  * @param {string} kbId
  * @returns {Promise<{port: number, pid: number}>}
  */
@@ -58,18 +57,18 @@ async function startNeo4jForKb(kbId) {
   const configPath = await writeNeo4jConfig(kbId, port);
   const neo4jBin = getNeo4jBinPath();  // platform-specific
   const proc = spawn(neo4jBin, ['console'], { cwd: configPath });
-  // Attendre le log "Started." avant de résoudre
+  // Wait for the "Started." log line before resolving
   return { port, pid: proc.pid };
 }
 ```
 
 ### Tray (app/tray.js)
-L'application reste active dans le tray même fenêtre fermée.
-Menu tray :
-- "Ouvrir ScientificKB"
-- "Bases de données" → sous-menu KB actives
-- "Statut" → CPU/RAM/Neo4j status
-- "Quitter" (arrête tous les services Neo4j proprement)
+The application remains active in the tray even when the main window is closed.
+Tray menu:
+- "Open ScientificKB"
+- "Databases" → sub-menu of active KBs
+- "Status" → CPU/RAM/Neo4j status
+- "Quit" (stops all Neo4j services cleanly)
 
 ## Packaging (electron-builder)
 
@@ -80,7 +79,7 @@ Menu tray :
     "appId": "com.scientifickb.app",
     "productName": "Scientific KB",
     "directories": { "output": "dist" },
-    "files": ["frontend/**", "backend/**"],
+    "files": ["app/**", "backend/**", "frontend/build/**"],
     "extraResources": [
       { "from": "resources/neo4j", "to": "neo4j" },
       { "from": "resources/python", "to": "python" }
@@ -103,23 +102,23 @@ Menu tray :
 }
 ```
 
-## Premier lancement — Setup Wizard
-Si `~/scientific-kb/` n'existe pas :
-1. Afficher un écran "Bienvenue" dans l'UI
-2. Télécharger les binaires Neo4j (si non bundlés) avec barre de progression
-3. Tester la connexion Gemini API (demander la clé)
-4. Créer la première KB (optionnel, peut être fait plus tard)
-5. Afficher l'interface principale
+## First launch — Setup Wizard
+If `~/scientific-kb/` does not exist:
+1. Display a "Welcome" screen in the UI
+2. Download Neo4j binaries (if not bundled) with a progress bar
+3. Test the Gemini API connection (prompt for the API key)
+4. Create the first KB (optional, can be done later)
+5. Display the main interface
 
-## Mise à jour automatique
-Utiliser `electron-updater` avec un serveur de mise à jour (GitHub Releases).
+## Auto-update
+Use `electron-updater` with an update server (GitHub Releases).
 ```javascript
 import { autoUpdater } from 'electron-updater';
 autoUpdater.checkForUpdatesAndNotify();
 ```
 
-## Variables d'environnement (config.js)
-Toutes les configs sont dans `~/scientific-kb/settings.json` (pas de .env).
+## Environment variables (config.js)
+All configuration is stored in `~/scientific-kb/settings.json` (no .env).
 ```json
 {
   "geminiApiKey": "AIza...",
@@ -131,7 +130,7 @@ Toutes les configs sont dans `~/scientific-kb/settings.json` (pas de .env).
 }
 ```
 
-## Chemins platform-specific
+## Platform-specific paths
 ```javascript
 const { app } = require('electron');
 

@@ -1,18 +1,18 @@
 # Neo4j Schema — Knowledge Graph (NEO4J_SCHEMA.md)
 
-## Nœuds (Nodes)
+## Nodes
 
 ### Document
 ```cypher
 (:Document {
-  id: String,          // SHA256 du PDF
-  kbId: String,        // ID de la knowledge base
+  id: String,          // SHA256 of the source file
+  kbId: String,        // knowledge base ID
   title: String,
   authors: [String],
   doi: String,
   year: Integer,
   sourceType: String,  // 'publication' | 'astm_standard'
-  astmCode: String,    // ex: "ASTM E8/E8M-22" (null si publication)
+  astmCode: String,    // e.g. "ASTM E8/E8M-22" (null for publications)
   journal: String,
   abstract: String,
   keywords: [String],
@@ -24,7 +24,7 @@
 ### Section
 ```cypher
 (:Section {
-  id: String,          // docId + '_' + sectionTitle slugifié
+  id: String,          // docId + '_' + slugified sectionTitle
   docId: String,
   kbId: String,
   title: String,
@@ -43,20 +43,20 @@
   sectionId: String,
   chunkIndex: Integer,
   chunkType: String,   // 'abstract'|'section'|'subsection'|'table'|'figure_caption'|'reference_list'
-  text: String,        // texte brut
-  summary: String,     // généré par LLM
+  text: String,        // raw text
+  summary: String,     // LLM-generated
   keywords: [String],
   pageStart: Integer,
   pageEnd: Integer,
   tokenCount: Integer,
-  embedding: [Float]   // vecteur 3072-dim (stocké dans index vectoriel)
+  embedding: [Float]   // 3072-dim vector (stored in the vector index)
 })
 ```
 
 ### Entity
 ```cypher
 (:Entity {
-  id: String,          // slugifié normalisé
+  id: String,          // normalised slug
   name: String,
   type: String,        // 'material'|'method'|'standard'|'compound'|'property'
   kbId: String
@@ -73,56 +73,56 @@
 })
 ```
 
-## Relations
+## Relationships
 
 ```cypher
-// Structure documentaire
+// Document structure
 (:Document)-[:HAS_SECTION]->(:Section)
 (:Section)-[:HAS_CHUNK]->(:Chunk)
 (:Section)-[:HAS_SUBSECTION]->(:Section)
-(:Document)-[:HAS_CHUNK]->(:Chunk)       // raccourci direct
+(:Document)-[:HAS_CHUNK]->(:Chunk)       // direct shortcut
 
-// Séquence des chunks
+// Chunk sequence
 (:Chunk)-[:NEXT_CHUNK]->(:Chunk)
 
-// Entités et claims
+// Entities and claims
 (:Chunk)-[:MENTIONS {frequency: Integer}]->(:Entity)
 (:Chunk)-[:SUPPORTS]->(:Claim)
 (:Claim)-[:ABOUT]->(:Entity)
 
-// Relations sémantiques entre entités (extraites par LLM)
+// Semantic relations between entities (extracted by LLM)
 (:Entity)-[:RELATES_TO {relation: String, docId: String}]->(:Entity)
-// exemples de relation: 'tested_with', 'specified_by', 'composed_of', 'improves', 'conflicts_with'
+// example relations: 'tested_with', 'specified_by', 'composed_of', 'improves', 'conflicts_with'
 
-// Citations inter-documents
+// Cross-document citations
 (:Document)-[:CITES]->(:Document)
 
-// Standards référencés
+// Referenced standards
 (:Document)-[:REFERENCES_STANDARD {astmCode: String}]->(:Document)
 ```
 
 ## Index DDL (scripts/initNeo4j.js)
 
 ```cypher
-// Contraintes d'unicité
+// Uniqueness constraints
 CREATE CONSTRAINT doc_id IF NOT EXISTS FOR (d:Document) REQUIRE d.id IS UNIQUE;
 CREATE CONSTRAINT chunk_id IF NOT EXISTS FOR (c:Chunk) REQUIRE c.id IS UNIQUE;
 CREATE CONSTRAINT entity_id IF NOT EXISTS FOR (e:Entity) REQUIRE e.id IS UNIQUE;
 CREATE CONSTRAINT section_id IF NOT EXISTS FOR (s:Section) REQUIRE s.id IS UNIQUE;
 
-// Index de filtrage KB
+// KB filtering indexes
 CREATE INDEX doc_kb IF NOT EXISTS FOR (d:Document) ON (d.kbId);
 CREATE INDEX chunk_kb IF NOT EXISTS FOR (c:Chunk) ON (c.kbId);
 CREATE INDEX entity_kb IF NOT EXISTS FOR (e:Entity) ON (e.kbId);
 
-// Index fulltext pour recherche textuelle
+// Fulltext search indexes
 CREATE FULLTEXT INDEX chunk_fulltext IF NOT EXISTS
   FOR (c:Chunk) ON EACH [c.text, c.summary, c.keywords];
 
 CREATE FULLTEXT INDEX doc_fulltext IF NOT EXISTS
   FOR (d:Document) ON EACH [d.title, d.abstract, d.keywords];
 
-// Index vectoriel pour similarity search
+// Vector similarity index
 CREATE VECTOR INDEX chunk_vector IF NOT EXISTS
   FOR (c:Chunk) ON (c.embedding)
   OPTIONS {
@@ -133,9 +133,9 @@ CREATE VECTOR INDEX chunk_vector IF NOT EXISTS
   };
 ```
 
-## Patterns Cypher — Ingestion (MERGE only)
+## Cypher patterns — Ingestion (MERGE only)
 
-### Créer/mettre à jour un Document
+### Create / update a Document
 ```cypher
 MERGE (d:Document {id: $id})
 SET d.kbId = $kbId,
@@ -150,7 +150,7 @@ SET d.kbId = $kbId,
 RETURN d
 ```
 
-### Créer un Chunk avec embedding
+### Create a Chunk with embedding
 ```cypher
 MERGE (c:Chunk {id: $id})
 SET c.kbId = $kbId,
@@ -165,7 +165,7 @@ MATCH (d:Document {id: $docId})
 MERGE (d)-[:HAS_CHUNK]->(c)
 ```
 
-### Créer une Entity et la lier
+### Create an Entity and link it
 ```cypher
 MERGE (e:Entity {id: $entityId, kbId: $kbId})
 ON CREATE SET e.name = $name, e.type = $type
@@ -176,9 +176,9 @@ ON CREATE SET r.frequency = 1
 ON MATCH SET r.frequency = r.frequency + 1
 ```
 
-## Patterns Cypher — Query (hybridRetriever.js)
+## Cypher patterns — Query (hybridRetriever.js)
 
-### Recherche vectorielle (similarité cosinus)
+### Vector search (cosine similarity)
 ```cypher
 CALL db.index.vector.queryNodes('chunk_vector', $topK, $queryEmbedding)
 YIELD node AS chunk, score
@@ -189,7 +189,7 @@ RETURN chunk, d.title AS docTitle, d.doi AS doi,
 ORDER BY score DESC
 ```
 
-### Expansion par graphe (voisins d'un chunk)
+### Graph expansion (neighbours of a chunk)
 ```cypher
 MATCH (seed:Chunk {id: $seedChunkId})
 MATCH (seed)-[:MENTIONS]->(e:Entity)<-[:MENTIONS]-(related:Chunk)
@@ -200,7 +200,7 @@ ORDER BY sharedEntities DESC
 LIMIT 10
 ```
 
-### Recherche par entité nommée
+### Named entity lookup
 ```cypher
 MATCH (e:Entity {kbId: $kbId})
 WHERE e.name =~ ('(?i).*' + $entityName + '.*')
@@ -210,7 +210,7 @@ RETURN c, d.title, e.name, e.type
 ORDER BY c.chunkType
 ```
 
-### Recherche fulltext
+### Fulltext search
 ```cypher
 CALL db.index.fulltext.queryNodes('chunk_fulltext', $query)
 YIELD node AS chunk, score

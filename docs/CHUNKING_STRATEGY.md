@@ -1,38 +1,38 @@
-# Chunking Strategy — Segmentation Heuristique PDF (CHUNKING_STRATEGY.md)
+# Chunking Strategy — Heuristic PDF Segmentation (CHUNKING_STRATEGY.md)
 
-## Principe général
-Le chunking est en deux passes :
-1. **Passe heuristique** (règles déterministes sur la structure du PDF)
-2. **Passe LLM** (enrichissement sémantique de chaque chunk)
+## General approach
+Chunking is done in two passes:
+1. **Heuristic pass** (deterministic rules on the PDF structure)
+2. **LLM pass** (semantic enrichment of each chunk)
 
-La passe heuristique ne fait jamais d'appel réseau. Elle est rapide et reproductible.
+The heuristic pass never makes any network calls. It is fast and reproducible.
 
-## Détection du type de document
+## Document type detection
 
-### Publication scientifique
-Indices : présence d'abstract, sections "Introduction / Methods / Results / Discussion",
-liste de références en fin de document, DOI en header/footer.
+### Scientific publication
+Indicators: presence of an abstract, sections "Introduction / Methods / Results / Discussion",
+reference list at the end of the document, DOI in header/footer.
 
-### Standard ASTM
-Indices : en-tête "ASTM [Code]/[Code]M-[Year]", sections numérotées (1. Scope, 2. Referenced
-Documents, 3. Terminology...), tableaux de spécifications, annexes obligatoires.
+### ASTM standard
+Indicators: header "ASTM [Code]/[Code]M-[Year]", numbered sections (1. Scope, 2. Referenced
+Documents, 3. Terminology...), specification tables, mandatory annexes.
 
 ```javascript
 /**
- * Détecte le type de document à partir du texte brut des premières pages.
- * @param {string} firstPagesText - Texte des 3 premières pages
+ * Detects the document type from the raw text of the first pages.
+ * @param {string} firstPagesText - Text of the first 3 pages
  * @returns {'publication' | 'astm_standard' | 'unknown'}
  */
 function detectDocumentType(firstPagesText) { ... }
 ```
 
-## Extraction layout (pdfParser.js)
+## Layout extraction (pdfParser.js)
 
-Utilise `pdfplumber` (via subprocess Python) pour extraire :
-- Blocs de texte avec coordonnées (x, y, width, height)
-- Taille et graisse de la police (détection de titres)
-- Tableaux (cellules avec positions)
-- Annotations et liens
+Uses `pdfplumber` (via Python subprocess) to extract:
+- Text blocks with coordinates (x, y, width, height)
+- Font size and weight (for title detection)
+- Tables (cells with positions)
+- Annotations and links
 
 ```javascript
 /**
@@ -52,30 +52,30 @@ Utilise `pdfplumber` (via subprocess Python) pour extraire :
 async function extractLayout(pdfPath) { ... }
 ```
 
-## Règles de chunking pour publications scientifiques
+## Chunking rules for scientific publications
 
-### Détection des sections (titres)
-Un bloc est un titre si : fontSize >= 1.2 * bodyFontSize ET (isBold OR allCaps pour 
-les sous-titres de niveau 2+).
+### Section (heading) detection
+A block is a heading if: fontSize >= 1.2 * bodyFontSize AND (isBold OR allCaps for
+level 2+ sub-headings).
 
-Hiérarchie reconnue :
-- H1 : Abstract, Introduction, Methods, Results, Discussion, Conclusion, References
-- H2 : sous-sections numérotées (ex: "2.1 Sample Preparation")
-- H3 : sous-sous-sections
+Recognised hierarchy:
+- H1: Abstract, Introduction, Methods, Results, Discussion, Conclusion, References
+- H2: numbered sub-sections (e.g. "2.1 Sample Preparation")
+- H3: sub-sub-sections
 
-### Règles de découpage
-| Type de chunk     | Règle de création                                         | Taille cible    |
-|-------------------|-----------------------------------------------------------|-----------------|
-| abstract          | Tout le bloc Abstract                                     | 150-400 tokens  |
-| section           | Une section H1 complète, découpée si > 800 tokens         | 300-800 tokens  |
-| subsection        | Une section H2 si la section parente > 800 tokens         | 200-600 tokens  |
-| table             | Un tableau complet avec son titre (caption)               | 100-500 tokens  |
-| figure_caption    | La légende d'une figure (texte uniquement)                | 50-200 tokens   |
-| reference_list    | Les références, groupées par 5-10                         | 200-400 tokens  |
+### Splitting rules
+| Chunk type      | Creation rule                                             | Target size     |
+|-----------------|-----------------------------------------------------------|-----------------|
+| abstract        | The entire Abstract block                                 | 150-400 tokens  |
+| section         | A complete H1 section, split if > 800 tokens             | 300-800 tokens  |
+| subsection      | An H2 section when the parent section exceeds 800 tokens | 200-600 tokens  |
+| table           | A complete table with its caption                        | 100-500 tokens  |
+| figure_caption  | A figure legend (text only)                              | 50-200 tokens   |
+| reference_list  | References grouped in sets of 5-10                       | 200-400 tokens  |
 
-### Règle de chevauchement (overlap)
-Chaque chunk (sauf abstract et références) inclut les 2 premières phrases du chunk
-précédent comme contexte de fenêtre glissante.
+### Overlap rule
+Each chunk (except abstract and references) includes the first 2 sentences of the previous
+chunk as a sliding-window context prefix.
 
 ```javascript
 /**
@@ -90,25 +90,25 @@ function chunkDocument(blocks, docType) { ... }
  * @property {number} index
  * @property {string} text
  * @property {string} chunkType  - 'abstract'|'section'|'subsection'|'table'|'figure_caption'|'reference_list'
- * @property {string} section    - titre de la section parente
+ * @property {string} section    - parent section title
  * @property {number} pageStart
  * @property {number} pageEnd
  * @property {number} tokenCount
  */
 ```
 
-## Règles de chunking pour standards ASTM
+## Chunking rules for ASTM standards
 
-### Structure fixe ASTM
-Les standards ASTM ont une structure normalisée. Les sections sont :
+### Fixed ASTM structure
+ASTM standards follow a normalised structure. Sections are:
 1. Scope — 2. Referenced Documents — 3. Terminology — 4. Significance and Use
-5+. Sections techniques — Annexes A, B, C...
+5+. Technical sections — Annexes A, B, C...
 
-Chaque section numérotée devient un chunk. Les tableaux de spécifications (valeurs
-mécaniques, compositions) sont des chunks séparés avec le contexte de la section.
+Each numbered section becomes one chunk. Specification tables (mechanical values,
+compositions) are separate chunks carrying their parent section as context.
 
-### Extraction des valeurs normatives
-Pour les tableaux ASTM, extraire les valeurs en format structuré :
+### Normative value extraction
+For ASTM tables, extract values in structured format:
 ```
 [Table] Mechanical requirements for Grade X
 Property | Min | Max | Unit
@@ -117,11 +117,11 @@ Yield Strength | 205 | - | MPa
 Elongation | 20 | - | %
 ```
 
-## Passe LLM — enrichissement (llmEnricher.js)
+## LLM pass — enrichment (llmEnricher.js)
 
-Après le chunking heuristique, chaque chunk passe par Gemini pour :
+After heuristic chunking, each chunk is sent to Gemini for enrichment.
 
-### Prompt d'enrichissement (chunk de texte)
+### Enrichment prompt (text chunk)
 ```
 You are a scientific knowledge extraction expert.
 Given this chunk from a [publication|ASTM standard], extract:
@@ -148,7 +148,7 @@ Respond ONLY with valid JSON:
 }
 ```
 
-### Prompt d'enrichissement (chunk tableau)
+### Enrichment prompt (table chunk)
 ```
 You are analyzing a table from a [publication|ASTM standard].
 Extract the structured data and explain what it specifies.
@@ -166,6 +166,6 @@ Respond ONLY with valid JSON:
 }
 ```
 
-## Comptage de tokens
-Utiliser `@anthropic-ai/tokenizer` ou compter approximativement : 1 token ≈ 4 caractères.
-Le budget max par chunk avant découpage est 800 tokens.
+## Token counting
+Use approximate counting: 1 token ≈ 4 characters.
+The maximum budget per chunk before splitting is 800 tokens.

@@ -1,30 +1,28 @@
 # Multi-Knowledge Base — Spec (MULTI_KB.md)
 
 ## Concept
-Chaque Knowledge Base est une unité autonome et isolée. L'utilisateur peut en créer autant
-qu'il veut (ex: "Matériaux ASTM", "Chimie organique", "Normes ISO bâtiment"). Il choisit
-la KB active dans l'UI avant d'ingérer ou de requêter.
+Each Knowledge Base is an autonomous, isolated unit. Users can create as many as they want (e.g. "ASTM Materials", "Organic Chemistry", "ISO Building Standards"). The active KB is selected in the UI before ingesting or querying.
 
-## Structure sur disque (par KB)
+## On-disk structure (per KB)
 ```
 ~/scientific-kb/
-└── {kb-id}/                    ← UUID v4, ex: "a3f2bc91-..."
-    ├── kb.json                 ← métadonnées KB (nom, description, dates)
-    ├── pdfs/                   ← archive PDF source of truth
+└── {kb-id}/                    ← UUID v4, e.g. "a3f2bc91-..."
+    ├── kb.json                 ← KB metadata (name, description, dates)
+    ├── pdfs/                   ← PDF archive — source of truth
     │   ├── {sha256}.pdf
     │   └── index.json          ← mapping sha256 -> {title, doi, added_at}
     ├── metadata.db             ← SQLite: documents, chunks, jobs queue
-    └── neo4j/                  ← data directory Neo4j pour cette KB
+    └── neo4j/                  ← Neo4j data directory for this KB
         ├── data/
         └── logs/
 ```
 
-## kb.json (schéma)
+## kb.json (schema)
 ```json
 {
   "id": "a3f2bc91-4d1e-4a2b-b3c0-1234567890ab",
-  "name": "Matériaux ASTM",
-  "description": "Standards ASTM E et F, publications métallurgie",
+  "name": "ASTM Materials",
+  "description": "ASTM E and F standards, metallurgy publications",
   "created_at": "2025-01-15T10:30:00Z",
   "updated_at": "2025-01-20T14:22:00Z",
   "doc_count": 147,
@@ -37,14 +35,14 @@ la KB active dans l'UI avant d'ingérer ou de requêter.
 ## SQLite schema (metadata.db)
 ```sql
 CREATE TABLE documents (
-  id          TEXT PRIMARY KEY,       -- SHA256 du PDF
+  id          TEXT PRIMARY KEY,       -- SHA256 of the PDF
   title       TEXT,
   authors     TEXT,                   -- JSON array
   doi         TEXT,
   year        INTEGER,
   source_type TEXT,                   -- 'publication' | 'astm_standard'
-  astm_code   TEXT,                   -- ex: "ASTM E8/E8M-22"
-  pdf_path    TEXT,                   -- chemin relatif dans pdfs/
+  astm_code   TEXT,                   -- e.g. "ASTM E8/E8M-22"
+  pdf_path    TEXT,                   -- relative path inside pdfs/
   ingested_at TEXT,
   status      TEXT DEFAULT 'pending'  -- 'pending'|'processing'|'done'|'error'
 );
@@ -74,33 +72,33 @@ CREATE TABLE jobs (
 ## API KB Management (routes/kb.js)
 
 ### GET /api/kb
-Retourne la liste de toutes les KBs.
+Returns the list of all KBs.
 ```json
 [
-  { "id": "...", "name": "Matériaux ASTM", "doc_count": 147, "color": "#3B8BD4" }
+  { "id": "...", "name": "ASTM Materials", "doc_count": 147, "color": "#3B8BD4" }
 ]
 ```
 
 ### POST /api/kb
-Crée une nouvelle KB.
+Creates a new KB.
 ```json
 // Body
-{ "name": "Chimie organique", "description": "...", "color": "#1D9E75" }
+{ "name": "Organic Chemistry", "description": "...", "color": "#1D9E75" }
 
 // Response 201
-{ "id": "uuid-généré", "name": "Chimie organique", ... }
+{ "id": "generated-uuid", "name": "Organic Chemistry", ... }
 ```
 
 ### DELETE /api/kb/:id
-Supprime une KB (Neo4j data + SQLite + PDFs archivés).
-Requiert confirmation explicite dans le body : `{ "confirm": true }`.
+Deletes a KB (Neo4j data + SQLite + archived files).
+Requires explicit confirmation in the body: `{ "confirm": true }`.
 
 ### GET /api/kb/:id/stats
-Statistiques détaillées : nb docs, nb chunks, taille archive, dernière mise à jour.
+Detailed statistics: doc count, chunk count, archive size, last update.
 
-## Neo4j — instance par KB
-Chaque KB démarre sa propre instance Neo4j sur un port dynamique (7687 + index).
-Le `neo4jClient.js` maintient un Map `kbId -> Driver`.
+## Neo4j — one instance per KB
+Each KB starts its own Neo4j instance on a dynamic port (7687 + index).
+`neo4jClient.js` maintains a Map `kbId -> Driver`.
 
 ```javascript
 /**
@@ -110,14 +108,14 @@ Le `neo4jClient.js` maintient un Map `kbId -> Driver`.
 async function getDriver(kbId) { ... }
 
 /**
- * Lance Neo4j pour une KB si pas déjà démarré.
+ * Starts Neo4j for a KB if not already running.
  * @param {string} kbId
  * @param {number} port
  */
 async function startNeo4jForKb(kbId, port) { ... }
 ```
 
-## Règles d'isolation
-- Les requêtes Cypher incluent toujours `WHERE doc.kb_id = $kbId` ou utilisent une database Neo4j dédiée
-- La KB active est passée dans chaque requête API via header `X-KB-ID` ou body field `kbId`
-- Jamais de cross-KB query sans flag explicite `crossKb: true`
+## Isolation rules
+- Cypher queries always include `WHERE doc.kb_id = $kbId` or use a dedicated Neo4j database
+- The active KB is passed in every API request via the `X-KB-ID` header or `kbId` body field
+- No cross-KB queries without an explicit `crossKb: true` flag

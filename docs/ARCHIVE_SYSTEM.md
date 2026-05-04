@@ -1,20 +1,20 @@
-# Archive System — Source of Truth PDF (ARCHIVE_SYSTEM.md)
+# Archive System — Source of Truth (ARCHIVE_SYSTEM.md)
 
-## Principe
-Chaque PDF ingéré est d'abord copié dans l'archive avant toute ingestion.
-L'archive est la source de vérité. La knowledge base Neo4j peut être reconstruite
-entièrement depuis l'archive à tout moment.
+## Principle
+Every ingested file is first copied into the archive before any processing.
+The archive is the source of truth. The Neo4j knowledge base can be fully rebuilt
+from the archive at any time.
 
-## Structure de l'archive
+## Archive structure
 ```
 ~/scientific-kb/{kb-id}/pdfs/
-├── index.json               ← registre de tous les PDFs
+├── index.json               ← registry of all archived documents
 ├── {sha256-1}.pdf
 ├── {sha256-2}.pdf
 └── ...
 ```
 
-## index.json (schéma)
+## index.json (schema)
 ```json
 {
   "version": 1,
@@ -40,25 +40,25 @@ entièrement depuis l'archive à tout moment.
 
 ```javascript
 /**
- * Archive un PDF et retourne son SHA256.
- * Copie le fichier, met à jour index.json, refuse les doublons.
+ * Archives a file and returns its SHA256.
+ * Copies the file, updates index.json, rejects duplicates.
  * @param {string} kbId
- * @param {string} sourcePath - chemin temporaire du PDF uploadé
+ * @param {string} sourcePath - temporary path of the uploaded file
  * @param {Object} meta - { title, doi, authors, year, sourceType, astmCode }
  * @returns {Promise<{sha256: string, pdfPath: string, isDuplicate: boolean}>}
  */
 async function archivePdf(kbId, sourcePath, meta) { ... }
 
 /**
- * Liste tous les PDFs archivés pour une KB.
+ * Lists all archived documents for a KB.
  * @param {string} kbId
  * @returns {Promise<ArchivedDoc[]>}
  */
 async function listArchive(kbId) { ... }
 
 /**
- * Génère un preview d'un PDF archivé (texte des 2 premières pages + métadonnées).
- * Utilisé pour l'UI preview avant ingestion ou mise à jour.
+ * Generates a preview of an archived document (text of first 2 pages + metadata).
+ * Used in the UI for preview before ingestion or update.
  * @param {string} kbId
  * @param {string} sha256
  * @returns {Promise<{title, authors, abstract, pageCount, previewText}>}
@@ -66,7 +66,7 @@ async function listArchive(kbId) { ... }
 async function generatePreview(kbId, sha256) { ... }
 
 /**
- * Supprime un document de l'archive ET de Neo4j.
+ * Removes a document from the archive AND from Neo4j.
  * @param {string} kbId
  * @param {string} sha256
  * @returns {Promise<void>}
@@ -76,25 +76,25 @@ async function deleteDocument(kbId, sha256) { ... }
 
 ## Rebuild (scripts/rebuildKb.js)
 
-Le rebuild ré-ingère tous les PDFs archivés dans une KB vierge.
-Utile en cas de corruption Neo4j, migration, ou changement de stratégie de chunking.
+The rebuild re-ingests all archived files into a fresh KB.
+Useful after Neo4j corruption, migration, or a change of chunking strategy.
 
-### Séquence de rebuild
+### Rebuild sequence
 ```
-1. Vérifier que la KB existe (kb.json présent)
-2. Arrêter l'instance Neo4j de la KB
-3. Supprimer ~/scientific-kb/{kb-id}/neo4j/data/
-4. Redémarrer Neo4j (base vierge)
-5. Exécuter initNeo4j.js (créer indexes + contraintes)
-6. Lire index.json → liste des PDFs archivés
-7. Pour chaque PDF (séquentiellement) :
-   a. Lire le PDF depuis l'archive
-   b. Exécuter le pipeline complet : parse → chunk → enrich → embed → write
-   c. Mettre à jour le statut dans SQLite
-8. Reporter la progression en temps réel via SSE (GET /api/kb/:id/rebuild/status)
+1. Verify the KB exists (kb.json present)
+2. Stop the KB's Neo4j instance
+3. Delete ~/scientific-kb/{kb-id}/neo4j/data/
+4. Restart Neo4j (empty database)
+5. Run initNeo4j.js (create indexes + constraints)
+6. Read index.json → list of archived documents
+7. For each document (sequentially):
+   a. Read the file from the archive
+   b. Run the full pipeline: parse → chunk → enrich → embed → write
+   c. Update the status in SQLite
+8. Report progress in real time via SSE (GET /api/kb/:id/rebuild/status)
 ```
 
-### Route API (routes/archive.js)
+### API routes (routes/archive.js)
 
 ```
 POST /api/kb/:kbId/rebuild
@@ -111,19 +111,18 @@ GET /api/kb/:kbId/archive/:sha256/preview
   Response: { title, authors, abstract, pageCount, previewText }
 
 DELETE /api/kb/:kbId/archive/:sha256
-  Supprime du filesystem + Neo4j
+  Removes from filesystem + Neo4j
   Body: { "confirm": true }
 ```
 
-## Preview avant mise à jour
-Quand un document est déjà ingéré et qu'on veut le ré-ingérer (nouvelle version),
-le flow est :
-1. Upload du nouveau PDF
-2. `generatePreview()` → afficher le preview dans l'UI
-3. Si l'utilisateur confirme : `deleteDocument()` ancienne version + `archivePdf()` + pipeline complet
-4. Les chunks de l'ancienne version sont supprimés de Neo4j avant l'écriture de la nouvelle
+## Re-ingestion preview
+When a document is already ingested and needs to be re-ingested (new version), the flow is:
+1. Upload the new file
+2. `generatePreview()` → display the preview in the UI
+3. If the user confirms: `deleteDocument()` old version + `archivePdf()` + full pipeline
+4. Old version chunks are removed from Neo4j before the new version is written
 
-### Suppression des chunks en Neo4j avant ré-ingestion
+### Removing chunks from Neo4j before re-ingestion
 ```cypher
 MATCH (d:Document {id: $sha256, kbId: $kbId})
 OPTIONAL MATCH (d)-[:HAS_CHUNK]->(c:Chunk)
