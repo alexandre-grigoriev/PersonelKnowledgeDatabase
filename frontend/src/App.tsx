@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createKb, deleteKb, listKbs, queryKb } from './api/client'
+import { createKb, deleteKb, resetKb, listKbs, queryKb } from './api/client'
 import type { Kb, ChatMessage } from './types'
 import { LANGS } from './constants'
 import { TopSelect } from './components/ui/TopSelect'
@@ -293,11 +293,6 @@ export default function App() {
                     onClick={() => { if (activeKb) { setSettingsOpen(false); setShowEdit(true) } }}>
                     Edit selected KB…
                   </button>
-                  <button className="topSelectDropdownItem"
-                    style={{ color: activeKb ? '#dc2626' : '#9ca3af', ...(activeKb ? {} : { pointerEvents: 'none' as const }) }}
-                    onClick={handleDeleteKb}>
-                    Delete selected KB
-                  </button>
                   <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '2px 0' }} />
                   <button className="topSelectDropdownItem"
                     style={!activeKb ? { opacity: 0.4, pointerEvents: 'none' } : {}}
@@ -550,21 +545,32 @@ function KbModal({ onClose, onDone }: { onClose: () => void; onDone: () => void 
 }
 
 // ─── Edit KB modal — wide, tabbed (Astra Docs presModal pattern) ──────────────
+// Tab order: Ingest | Documents | Settings
+// Settings tab contains: name/description/color + Reset KB + Delete KB
 
 function EditKbModal({ kb, onClose, onDone }: { kb: Kb; onClose: () => void; onDone: () => void }) {
-  const [tab, setTab] = useState<'settings' | 'ingest' | 'archive'>('settings')
+  const [tab, setTab] = useState<'ingest' | 'documents' | 'settings'>('ingest')
 
   // Settings tab state
   const [name, setName]       = useState(kb.name)
   const [desc, setDesc]       = useState(kb.description)
   const [color, setColor]     = useState(kb.color)
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState('')
+  const [saving, setSaving]   = useState(false)
+  const [saveError, setSaveError] = useState('')
+
+  // Reset state (Astra Docs pattern)
+  const [resetConfirm, setResetConfirm] = useState(false)
+  const [resetting, setResetting]       = useState(false)
+  const [resetDone, setResetDone]       = useState(false)
+
+  // Delete state
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
+  const [deleting, setDeleting]           = useState(false)
 
   const saveSettings = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
-    setLoading(true); setError('')
+    setSaving(true); setSaveError('')
     try {
       const res = await fetch(`/api/kb/${kb.id}`, {
         method: 'PATCH',
@@ -574,9 +580,29 @@ function EditKbModal({ kb, onClose, onDone }: { kb: Kb; onClose: () => void; onD
       if (!res.ok) throw new Error('Failed to update knowledge base')
       onDone()
     } catch (err) {
-      setError((err as Error).message)
-      setLoading(false)
+      setSaveError((err as Error).message)
+      setSaving(false)
     }
+  }
+
+  const doReset = async () => {
+    setResetting(true)
+    try {
+      await resetKb(kb.id)
+      setResetDone(true)
+      setResetConfirm(false)
+      onDone() // refresh KB counts in parent
+    } catch { /* non-fatal */ }
+    finally { setResetting(false) }
+  }
+
+  const doDelete = async () => {
+    setDeleting(true)
+    try {
+      await deleteKb(kb.id)
+      onDone()
+      onClose()
+    } catch { setDeleting(false) }
   }
 
   return (
@@ -597,19 +623,34 @@ function EditKbModal({ kb, onClose, onDone }: { kb: Kb; onClose: () => void; onD
               <span className="kbDot" style={{ background: color, width: 14, height: 14 }} />
               {kb.name}
             </div>
-            <div className="presModalSubtitle">Knowledge base settings — ingest documents — browse archive</div>
+            <div className="presModalSubtitle">Ingest documents — browse archive — knowledge base settings</div>
           </div>
 
-          {/* Tabs */}
+          {/* Tabs: Ingest | Documents | Settings */}
           <div className="kbTabs">
-            <button className={`kbTab${tab === 'settings' ? ' kbTabActive' : ''}`} onClick={() => setTab('settings')}>Settings</button>
-            <button className={`kbTab${tab === 'ingest'   ? ' kbTabActive' : ''}`} onClick={() => setTab('ingest')}>Ingest</button>
-            <button className={`kbTab${tab === 'archive'  ? ' kbTabActive' : ''}`} onClick={() => setTab('archive')}>Archive</button>
+            <button className={`kbTab${tab === 'ingest'    ? ' kbTabActive' : ''}`} onClick={() => setTab('ingest')}>Ingest</button>
+            <button className={`kbTab${tab === 'documents' ? ' kbTabActive' : ''}`} onClick={() => setTab('documents')}>Documents</button>
+            <button className={`kbTab${tab === 'settings'  ? ' kbTabActive' : ''}`} onClick={() => setTab('settings')}>Settings</button>
           </div>
 
-          {/* Settings tab */}
+          {/* ── Ingest tab ── */}
+          {tab === 'ingest' && (
+            <div style={{ marginTop: 16 }}>
+              <Ingest kbId={kb.id} onDone={onDone} />
+            </div>
+          )}
+
+          {/* ── Documents tab (was Archive) ── */}
+          {tab === 'documents' && (
+            <div style={{ marginTop: 16 }}>
+              <Archive kbId={kb.id} />
+            </div>
+          )}
+
+          {/* ── Settings tab ── */}
           {tab === 'settings' && (
             <>
+              {/* Name / Description / Color form */}
               <form onSubmit={saveSettings} className="presForm">
                 <div className="presFieldRow">
                   <div className="presFieldLabel">Name <span style={{ color: '#ef4444' }}>*</span></div>
@@ -619,7 +660,7 @@ function EditKbModal({ kb, onClose, onDone }: { kb: Kb; onClose: () => void; onD
                   <div className="presFieldLabel">Description</div>
                   <input className="presFieldInput" value={desc} onChange={e => setDesc(e.target.value)} placeholder="Optional description" />
                 </div>
-                <div className="presFieldRow">
+                <div className="presFieldRow" style={{ marginBottom: 0 }}>
                   <div className="presFieldLabel">Color</div>
                   <div className="flex gap8 itemsCenter">
                     <input type="color" value={color} onChange={e => setColor(e.target.value)}
@@ -627,29 +668,85 @@ function EditKbModal({ kb, onClose, onDone }: { kb: Kb; onClose: () => void; onD
                     <span className="textSm textMuted">{color}</span>
                   </div>
                 </div>
-                {error && <div style={{ color: '#dc2626', fontSize: 13, marginTop: 4 }}>{error}</div>}
+                {saveError && <div style={{ color: '#dc2626', fontSize: 13, marginTop: 8 }}>{saveError}</div>}
               </form>
-              <div className="presFooter">
+              <div className="presFooter" style={{ marginBottom: 8 }}>
                 <button className="presCancelBtn" onClick={onClose}>Cancel</button>
-                <button className="presSubmitBtn" disabled={loading || !name.trim()} onClick={saveSettings}>
-                  {loading ? 'Saving…' : 'Save'}
+                <button className="presSubmitBtn" disabled={saving || !name.trim()} onClick={saveSettings}>
+                  {saving ? 'Saving…' : 'Save'}
                 </button>
               </div>
+
+              {/* ── Reset KB (Astra Docs pattern) ── */}
+              <div style={{ borderTop: '1px solid var(--border)', margin: '8px 0 0', padding: '20px 0 8px' }}>
+                {!resetConfirm ? (
+                  <div className="flexCol gap12">
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Reset knowledge base</div>
+                      <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+                        Permanently deletes all indexed data (Neo4j graph + chunks) while keeping your
+                        archived files. Documents are reset to <em>pending</em> so they can be re-ingested.
+                      </div>
+                    </div>
+                    <div>
+                      <button className="presSubmitBtn" style={{ background: '#d97706' }}
+                        disabled={resetting} onClick={() => setResetConfirm(true)}>
+                        Reset knowledge base
+                      </button>
+                    </div>
+                    {resetDone && (
+                      <div style={{ fontSize: 13, color: '#16a34a' }}>✓ Knowledge base reset successfully.</div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flexCol gap12">
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#d97706' }}>
+                      This will delete all indexed data for "{kb.name}". Archived files are kept. Continue?
+                    </div>
+                    <div className="flex gap8">
+                      <button className="presSubmitBtn" style={{ background: '#d97706' }}
+                        disabled={resetting} onClick={doReset}>
+                        {resetting ? 'Resetting…' : 'Yes, reset'}
+                      </button>
+                      <button className="presCancelBtn" onClick={() => setResetConfirm(false)}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Delete KB ── */}
+              <div style={{ borderTop: '1px solid var(--border)', margin: '16px 0 0', padding: '20px 0 0' }}>
+                {!deleteConfirm ? (
+                  <div className="flexCol gap12">
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Delete knowledge base</div>
+                      <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+                        Permanently removes this knowledge base including all archived files. This cannot be undone.
+                      </div>
+                    </div>
+                    <div>
+                      <button className="presSubmitBtn" style={{ background: '#dc2626' }}
+                        onClick={() => setDeleteConfirm(true)}>
+                        Delete knowledge base
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flexCol gap12">
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#dc2626' }}>
+                      Do you really want to delete "{kb.name}"? All data and files will be lost!
+                    </div>
+                    <div className="flex gap8">
+                      <button className="presSubmitBtn" style={{ background: '#dc2626' }}
+                        disabled={deleting} onClick={doDelete}>
+                        {deleting ? 'Deleting…' : 'Yes, delete everything'}
+                      </button>
+                      <button className="presCancelBtn" onClick={() => setDeleteConfirm(false)}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </>
-          )}
-
-          {/* Ingest tab */}
-          {tab === 'ingest' && (
-            <div style={{ marginTop: 16 }}>
-              <Ingest kbId={kb.id} onDone={onDone} />
-            </div>
-          )}
-
-          {/* Archive tab */}
-          {tab === 'archive' && (
-            <div style={{ marginTop: 16 }}>
-              <Archive kbId={kb.id} />
-            </div>
           )}
         </div>
       </div>

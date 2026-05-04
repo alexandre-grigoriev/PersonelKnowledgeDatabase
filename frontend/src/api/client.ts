@@ -30,6 +30,13 @@ export const deleteKb = (id: string) =>
     body: JSON.stringify({ confirm: true }),
   })
 
+/** Wipes all Neo4j nodes + SQLite chunks for a KB, keeping archived files intact. */
+export const resetKb = (id: string) =>
+  req<{ reset: boolean; nodesDeleted: number }>(`/kb/${id}/reset`, {
+    method: 'POST',
+    body: JSON.stringify({ confirm: true }),
+  })
+
 export const getKbStats = (id: string) => req<KbStats>(`/kb/${id}/stats`)
 
 // ── Archive ───────────────────────────────────────────────────────────────────

@@ -355,4 +355,62 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/kb/:id/reset
+ * Wipes all Neo4j nodes and SQLite chunks for a KB, keeping archived files intact.
+ * Documents are reset to 'pending' so they can be re-ingested.
+ * Body: { confirm: true }
+ * Response: { reset: true, nodesDeleted: number }
+ */
+router.post('/:id/reset', async (req, res) => {
+  const { id } = req.params;
+  const kbDir  = path.join(DATA_DIR, id);
+
+  if (!readKbJson(kbDir)) {
+    return res.status(404).json({ error: 'Knowledge base not found' });
+  }
+  if (req.body?.confirm !== true) {
+    return res.status(400).json({ error: 'Body must contain { "confirm": true }' });
+  }
+
+  let nodesDeleted = 0;
+
+  // 1. Delete all Neo4j nodes belonging to this KB
+  try {
+    const driver  = getDriver(id);
+    const session = driver.session();
+    const result  = await session.writeTransaction(tx =>
+      tx.run('MATCH (n {kbId: $kbId}) DETACH DELETE n RETURN count(n) AS n', { kbId: id }),
+    );
+    nodesDeleted = result.records[0]?.get('n')?.toNumber() ?? 0;
+    await session.close();
+  } catch (err) {
+    logger.warn({ err, id }, 'reset: neo4j wipe failed (non-fatal)');
+  }
+
+  // 2. Clear SQLite chunks and reset document statuses
+  try {
+    const db = openDb(id);
+    db.prepare('DELETE FROM chunks').run();
+    db.prepare('DELETE FROM jobs').run();
+    db.prepare(`UPDATE documents SET status = 'pending', ingested_at = NULL`).run();
+    db.close();
+  } catch (err) {
+    logger.warn({ err, id }, 'reset: sqlite clear failed');
+  }
+
+  // 3. Reset kb.json counts
+  try {
+    const kbJsonPath = path.join(kbDir, 'kb.json');
+    const kbJson = JSON.parse(fs.readFileSync(kbJsonPath, 'utf8'));
+    kbJson.doc_count   = 0;
+    kbJson.chunk_count = 0;
+    kbJson.updated_at  = new Date().toISOString();
+    fs.writeFileSync(kbJsonPath, JSON.stringify(kbJson, null, 2), 'utf8');
+  } catch { /* non-fatal */ }
+
+  logger.info({ id, nodesDeleted }, 'KB reset');
+  res.json({ reset: true, nodesDeleted });
+});
+
 module.exports = router;
