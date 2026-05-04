@@ -21,6 +21,16 @@ function now()    { return new Date().toISOString() }
 const SIDEBAR_MIN = 220
 const SIDEBAR_MAX = 600
 
+// ─── localStorage helpers ─────────────────────────────────────────────────────
+
+function lsGet<T>(key: string, fallback: T): T {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback }
+  catch { return fallback }
+}
+function lsSet(key: string, value: unknown) {
+  try { localStorage.setItem(key, JSON.stringify(value)) } catch { /* quota exceeded */ }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -30,8 +40,10 @@ export default function App() {
   const [lang, setLang]             = useState('en')
   const [sidebarWidth, setSidebarWidth] = useState(() => Math.round(window.innerWidth * 0.22))
 
-  // Projects / chats (in-memory, per KB)
-  const [projectsByKb, setProjectsByKb] = useState<Record<string, Project[]>>({})
+  // Projects / chats — persisted to localStorage
+  const [projectsByKb, setProjectsByKb] = useState<Record<string, Project[]>>(
+    () => lsGet('skb_projects', {}),
+  )
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
   const [activeChatId, setActiveChatId]       = useState<string | null>(null)
   const [renamingChatId, setRenamingChatId]   = useState<string | null>(null)
@@ -40,7 +52,9 @@ export default function App() {
   const [newProjectName, setNewProjectName]   = useState('')
 
   // Chat messages (per chatId)
-  const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>({})
+  const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>(
+    () => lsGet('skb_messages', {}),
+  )
   const [isThinking, setIsThinking]     = useState(false)
   const [input, setInput]               = useState('')
 
@@ -57,6 +71,11 @@ export default function App() {
   const mainGridRef  = useRef<HTMLElement>(null)
   const kbMenuRef    = useRef<HTMLDivElement>(null)
   const settingsRef  = useRef<HTMLDivElement>(null)
+
+  // ── Persist projects and messages to localStorage ────────────────────────────
+
+  useEffect(() => { lsSet('skb_projects', projectsByKb) }, [projectsByKb])
+  useEffect(() => { lsSet('skb_messages', chatMessages)  }, [chatMessages])
 
   // ── Load KBs ────────────────────────────────────────────────────────────────
 
