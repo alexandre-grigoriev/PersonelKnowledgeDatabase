@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import { listArchive, deleteDocument } from '../api/client'
 import type { ArchivedDoc } from '../types'
 
@@ -167,6 +170,8 @@ function DocPopup({
               <div style={{ padding: '28px 36px', maxWidth: 860, margin: '0 auto' }}>
                 <div className="mdContent" style={{ fontSize: 15, lineHeight: 1.75 }}>
                   <ReactMarkdown
+                    remarkPlugins={[remarkMath]}
+                    rehypePlugins={[rehypeKatex]}
                     components={{
                       img: ({ src, alt }) => (
                         <img src={src} alt={alt ?? ''} style={{ maxWidth: '100%', height: 'auto', borderRadius: 6, margin: '16px 0', display: 'block' }} />

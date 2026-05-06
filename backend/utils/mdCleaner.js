@@ -21,9 +21,16 @@ Rules:
   ~ immediately before a symbol/variable → ( (opening parenthesis),
   ! immediately after a symbol/variable → ) (closing parenthesis).
 - Fix any other garbled characters the same way — infer correct symbol from context.
+- Convert ALL mathematical expressions and formulas to LaTeX notation:
+  - Inline formulas: wrap in single dollar signs $...$  (e.g. $\\Delta\\nu$, $I_{CORR}(\\Delta\\nu)$)
+  - Display/block formulas (standalone equations): wrap in double dollar signs $$...$$
+  - Greek letters: ν → \\nu, Δ → \\Delta, λ → \\lambda, σ → \\sigma, etc.
+  - Subscripts: I_CORR → I_{CORR}, use _ for subscript and ^ for superscript
+  - Units like cm⁻¹ → $\\text{cm}^{-1}$
 - Preserve ALL Markdown formatting: headings (#/##/###), bold (**), lists, blank lines.
-- Preserve image references exactly as-is: ![Figure N](images/fig_X_Y.png)
-- Do NOT add, remove, or rephrase content — only fix encoding errors.
+- Preserve image references EXACTLY as found — never invent, duplicate, or modify them.
+  Image lines look like: ![Figure N](images/somefilename.png) — copy them unchanged.
+- Do NOT add, remove, or rephrase content — only fix encoding errors and convert formulas.
 - Return ONLY the corrected Markdown text, no explanation.
 
 Text to fix:`;
