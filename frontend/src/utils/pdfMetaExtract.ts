@@ -109,8 +109,10 @@ function parse(text: string, info: Record<string, string>): ExtractedMeta {
   }
 
   // ── Title ─────────────────────────────────────────────────────────────────────
-  if (info.Title) {
-    result.title = info.Title.trim()
+  // Skip PDF metadata Title if it looks like a document ID (all digits/hyphens or starts with digits)
+  const rawTitle = info.Title?.trim() ?? ''
+  if (rawTitle && !/^\d/.test(rawTitle)) {
+    result.title = rawTitle
   } else if (isAstm) {
     // ASTM: "Standard Guide/Practice/Test Method/Specification for ..."
     const tm = text.match(
@@ -118,9 +120,15 @@ function parse(text: string, info: Record<string, string>): ExtractedMeta {
     )
     if (tm) result.title = `Standard ${tm[1]} for ${tm[2].trim()}`
   } else {
-    // Publication: title is usually the first long capitalised phrase
-    const tm = text.match(/^([A-Z][^.!?\n]{30,120})/)
-    if (tm) result.title = tm[1].trim()
+    // Patent: "TITLE OF INVENTION" label
+    const ptm = text.match(/TITLE\s+OF\s+INVENTION\s+([A-Z][^\n.]{10,120})/i)
+    if (ptm) {
+      result.title = ptm[1].trim()
+    } else {
+      // Publication: title is usually the first long capitalised phrase
+      const tm = text.match(/^([A-Z][^.!?\n]{30,120})/)
+      if (tm) result.title = tm[1].trim()
+    }
   }
 
   // ── Authors ───────────────────────────────────────────────────────────────────
@@ -154,7 +162,7 @@ function parse(text: string, info: Record<string, string>): ExtractedMeta {
     const sm = text.match(/\bScope\b\s*(.{80,1200}?)\s*(?=\b2\s*\.\s*Referenced|\bReferenced Documents\b|\bTerminology\b|\bSignificance\b)/i)
     if (sm) result.abstract = sm[1].replace(/\s+/g, ' ').trim().slice(0, 1000)
   } else {
-    const am = text.match(/\bAbstract\b[\s:—\-]*(.{80,1200}?)\s*(?=\bKeywords?\b|\bIntroduction\b|\b1\s*\.\s+[A-Z]|\bBackground\b)/i)
+    const am = text.match(/\bAbstract\b[\s:—\-]*(.{80,1200}?)\s*(?=\bKeywords?\b|\bIntroduction\b|\b1\s*\.\s+[A-Z]|\bBackground\b|\bClaims?\b|\bField\s+of\b|\bSummary\b|\bDetailed\s+Description\b)/i)
     if (am) result.abstract = am[1].replace(/\s+/g, ' ').trim().slice(0, 1000)
   }
 

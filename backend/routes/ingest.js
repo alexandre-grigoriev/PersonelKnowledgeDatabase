@@ -405,8 +405,8 @@ Raw document text (first pages):
 ${text.slice(0, 5000)}`;
 
   try {
-    const { generateContent } = require('../utils/geminiClient');
-    const abstract = await generateContent(prompt);
+    const { generateContentDirect } = require('../utils/geminiClient');
+    const abstract = await generateContentDirect(prompt);
     res.json({ abstract: abstract.trim() });
   } catch (err) {
     logger.error({ err }, 'extract-abstract: Gemini call failed');

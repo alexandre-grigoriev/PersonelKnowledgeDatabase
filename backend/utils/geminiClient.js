@@ -51,12 +51,14 @@ if (!GEMINI_API_KEY) {
   throw new Error('GEMINI_API_KEY is required');
 }
 
-// Sequential lock to enforce no parallel calls
+// Sequential lock to enforce no parallel calls.
+// Uses a separate chain pointer so a rejected call doesn't break future calls.
 let lastPromise = Promise.resolve();
 function sequential(fn) {
   return (...args) => {
-    lastPromise = lastPromise.then(() => fn(...args));
-    return lastPromise;
+    const result = lastPromise.catch(() => {}).then(() => fn(...args));
+    lastPromise = result.catch(() => {}); // future calls proceed regardless of this one's outcome
+    return result;
   };
 }
 
@@ -97,6 +99,31 @@ async function _fetchGeminiWithFallbacks(urls, body) {
  * @param {string} prompt
  * @returns {Promise<string>}
  */
+const RETRY_STATUSES = new Set([429, 500, 503]);
+const MAX_RETRIES    = 3;
+
+function parseRetryDelay(errMessage) {
+  // Gemini embeds "Please retry in X.Xs" in the error body
+  const m = errMessage?.match(/retry in (\d+(?:\.\d+)?)s/i);
+  return m ? Math.ceil(parseFloat(m[1])) * 1000 + 500 : null; // add 500ms buffer
+}
+
+async function _withRetry(fn) {
+  let lastErr;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try { return await fn(); }
+    catch (err) {
+      lastErr = err;
+      const code = parseInt(err.message?.match(/^Gemini \w+ failed: (\d+)/)?.[1]);
+      if (!RETRY_STATUSES.has(code) || attempt === MAX_RETRIES) throw err;
+      const delay = parseRetryDelay(err.message) ?? [3000, 8000, 20000][attempt];
+      logger.warn({ code, attempt: attempt + 1, delayMs: delay }, 'gemini: transient error — retrying');
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw lastErr;
+}
+
 async function _generateContent(prompt) {
   const body = {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -106,8 +133,6 @@ async function _generateContent(prompt) {
   const urls = [
     buildModelUrl(GEMINI_API_URL, GEMINI_MODEL, 'generateContent'),
     buildModelUrl(GEMINI_BETA_API_URL, GEMINI_MODEL, 'generateContent'),
-    buildModelUrl(GEMINI_API_URL, GEMINI_MODEL, 'generateText'),
-    buildModelUrl(GEMINI_BETA_API_URL, GEMINI_MODEL, 'generateText'),
   ];
 
   const { res, raw } = await _fetchGeminiWithFallbacks(urls, body);
@@ -149,8 +174,12 @@ async function _embedContent(text) {
     || [];
 }
 
+const _generateContentWithRetry = (prompt) => _withRetry(() => _generateContent(prompt));
+const _embedContentWithRetry    = (text)   => _withRetry(() => _embedContent(text));
+
 module.exports = {
   reloadModels,
-  generateContent: sequential(_generateContent),
-  embedContent: sequential(_embedContent),
+  generateContent:       sequential(_generateContentWithRetry),
+  generateContentDirect: _generateContentWithRetry,   // bypasses sequential lock — for one-off calls
+  embedContent:          sequential(_embedContentWithRetry),
 };
