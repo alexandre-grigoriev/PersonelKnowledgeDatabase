@@ -19,6 +19,7 @@ export interface ExtractedMeta {
   journal?:    string
   abstract?:   string
   sourceType?: 'publication' | 'astm_standard'
+  rawText?:    string
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -57,7 +58,9 @@ export async function extractPdfMeta(file: File): Promise<ExtractedMeta> {
     info = (meta?.info ?? {}) as Record<string, string>
   } catch { /* non-fatal */ }
 
-  return parse(text, info)
+  const result = parse(text, info)
+  result.rawText = text
+  return result
 }
 
 // ─── Pattern matching ─────────────────────────────────────────────────────────
@@ -145,8 +148,13 @@ function parse(text: string, info: Record<string, string>): ExtractedMeta {
   }
 
   // ── Abstract ─────────────────────────────────────────────────────────────────
-  if (!isAstm) {
-    const am = text.match(/\bAbstract[.\s—\-:]+([^]+?)(?=\n\s*(?:Keywords?|Introduction|1\.|Background))/i)
+  // Note: clean() linearises text to a single space-separated string — no \n remain.
+  if (isAstm) {
+    // ASTM: Scope section (1.x paragraphs) up to section 2 or Significance
+    const sm = text.match(/\bScope\b\s*(.{80,1200}?)\s*(?=\b2\s*\.\s*Referenced|\bReferenced Documents\b|\bTerminology\b|\bSignificance\b)/i)
+    if (sm) result.abstract = sm[1].replace(/\s+/g, ' ').trim().slice(0, 1000)
+  } else {
+    const am = text.match(/\bAbstract\b[\s:—\-]*(.{80,1200}?)\s*(?=\bKeywords?\b|\bIntroduction\b|\b1\s*\.\s+[A-Z]|\bBackground\b)/i)
     if (am) result.abstract = am[1].replace(/\s+/g, ' ').trim().slice(0, 1000)
   }
 

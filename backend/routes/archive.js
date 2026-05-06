@@ -19,6 +19,7 @@ const express  = require('express');
 
 const logger       = require('../utils/logger');
 const { getKbArchiveDir, getKbSqlitePath, DATA_DIR } = require('../utils/config');
+const { getMdPath, getMdDir } = require('../utils/pdfToMd');
 const { getDriver, stopNeo4jForKb, startNeo4jForKb } = require('../utils/neo4jClient');
 const { deleteDocument: deleteFromNeo4j } = require('../ingestion/graphWriter');
 
@@ -72,6 +73,7 @@ router.get('/:kbId/archive', (req, res) => {
     doi:          d.doi          || null,
     year:         d.year         || null,
     sourceType:   d.source_type  || 'publication',
+    abstract:     d.abstract     || null,
     addedAt:      d.added_at,
     fileSizeBytes: d.file_size_bytes || 0,
     pageCount:    d.page_count   || null,
@@ -128,6 +130,45 @@ router.get('/:kbId/archive/:sha256/preview', async (req, res) => {
 });
 
 /**
+ * GET /:kbId/archive/:sha256/pdf
+ * Streams the archived PDF file for inline browser rendering.
+ */
+router.get('/:kbId/archive/:sha256/pdf', (req, res) => {
+  const { kbId, sha256 } = req.params;
+  const pdfPath = path.join(getKbArchiveDir(kbId), `${sha256}.pdf`);
+  if (!fs.existsSync(pdfPath)) return res.status(404).json({ error: 'PDF not found' });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'inline');
+  fs.createReadStream(pdfPath).pipe(res);
+});
+
+/**
+ * GET /:kbId/archive/:sha256/md
+ * Returns the converted Markdown content (if available).
+ * Response: { md: string, hasImages: boolean } or 404
+ */
+router.get('/:kbId/archive/:sha256/md', (req, res) => {
+  const { kbId, sha256 } = req.params;
+  const mdPath = getMdPath(kbId, sha256);
+  if (!mdPath) return res.status(404).json({ error: 'Markdown not yet generated' });
+  const md = fs.readFileSync(mdPath, 'utf8');
+  const imgDir = path.join(getMdDir(kbId, sha256), 'images');
+  const hasImages = fs.existsSync(imgDir) && fs.readdirSync(imgDir).length > 0;
+  res.json({ md, hasImages });
+});
+
+/**
+ * GET /:kbId/archive/:sha256/images/:filename
+ * Serves an extracted figure image.
+ */
+router.get('/:kbId/archive/:sha256/images/:filename', (req, res) => {
+  const { kbId, sha256, filename } = req.params;
+  const imgPath = path.join(getMdDir(kbId, sha256), 'images', path.basename(filename));
+  if (!fs.existsSync(imgPath)) return res.status(404).json({ error: 'Image not found' });
+  res.sendFile(imgPath);
+});
+
+/**
  * DELETE /:kbId/archive/:sha256
  * Removes a document from the archive filesystem, index.json, SQLite, and Neo4j.
  * Body: { confirm: true }
@@ -166,6 +207,10 @@ router.delete('/:kbId/archive/:sha256', async (req, res) => {
     // Remove PDF file
     const pdfPath = path.join(getKbArchiveDir(kbId), `${sha256}.pdf`);
     if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
+
+    // Remove converted MD + images from uploads
+    const mdDir = getMdDir(kbId, sha256);
+    if (fs.existsSync(mdDir)) fs.rmSync(mdDir, { recursive: true, force: true });
 
     // Update index
     delete index.documents[sha256];

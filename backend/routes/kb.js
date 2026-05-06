@@ -327,6 +327,52 @@ router.get('/:id/stats', async (req, res) => {
 });
 
 /**
+ * PATCH /api/kb/:id
+ * Updates mutable fields (name, description, color) in kb.json.
+ * Body: { name?: string, description?: string, color?: string }
+ * Response: updated KB object
+ */
+router.patch('/:id', (req, res) => {
+  const { id } = req.params;
+  const kbDir  = path.join(DATA_DIR, id);
+  const kbJson = readKbJson(kbDir);
+
+  if (!kbJson) {
+    return res.status(404).json({ error: 'Knowledge base not found' });
+  }
+
+  const { name, description, color } = req.body || {};
+
+  if (name !== undefined) {
+    if (typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ error: 'name must be a non-empty string' });
+    }
+    kbJson.name = name.trim();
+  }
+  if (description !== undefined) kbJson.description = String(description).trim();
+  if (color       !== undefined) kbJson.color       = String(color);
+  kbJson.updated_at = new Date().toISOString();
+
+  try {
+    writeKbJson(kbDir, kbJson);
+    logger.info({ id, name: kbJson.name }, 'KB updated');
+    res.json({
+      id:          kbJson.id,
+      name:        kbJson.name,
+      description: kbJson.description || '',
+      color:       kbJson.color       || '#3B8BD4',
+      docCount:    kbJson.doc_count   || 0,
+      chunkCount:  kbJson.chunk_count || 0,
+      createdAt:   kbJson.created_at,
+      status:      kbStatus(id),
+    });
+  } catch (err) {
+    logger.error({ err, id }, 'PATCH /api/kb/:id failed');
+    res.status(500).json({ error: 'Failed to update knowledge base' });
+  }
+});
+
+/**
  * DELETE /api/kb/:id
  * Permanently removes a KB: stops Neo4j, wipes all files.
  * Body: { confirm: true }

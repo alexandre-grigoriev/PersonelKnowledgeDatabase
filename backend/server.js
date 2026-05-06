@@ -71,6 +71,7 @@ app.use('/api/kb',     kbRouter);
 app.use('/api/kb',     loadRoute('./routes/archive'));
 app.use('/api/ingest', loadRoute('./routes/ingest'));
 app.use('/api/query',  loadRoute('./routes/query'));
+app.use('/api/settings', loadRoute('./routes/settings'));
 
 // ─── Fallthrough handlers ─────────────────────────────────────────────────────
 

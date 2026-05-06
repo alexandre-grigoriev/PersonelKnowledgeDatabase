@@ -105,3 +105,26 @@ export const queryKb = (
     method: 'POST',
     body: JSON.stringify({ kbId, question, options }),
   })
+
+// ── Abstract extraction ───────────────────────────────────────────────────────
+
+export const extractAbstract = (text: string, isAstm: boolean) =>
+  req<{ abstract: string }>('/ingest/extract-abstract', {
+    method: 'POST',
+    body: JSON.stringify({ text, isAstm }),
+  })
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+export interface Settings {
+  geminiModel: string
+  geminiEmbedModel: string
+}
+
+export const getSettings = () => req<Settings>('/settings')
+
+export const updateSettings = (settings: Partial<Settings>) =>
+  req<Settings>('/settings', {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  })

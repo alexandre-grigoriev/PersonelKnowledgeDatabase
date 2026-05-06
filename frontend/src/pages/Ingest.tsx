@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
-import { ingestPdf, ingestText, getJobStatus } from '../api/client'
+import { ingestPdf, ingestText, getJobStatus, extractAbstract } from '../api/client'
 import type { IngestJob } from '../types'
 import { extractPdfMeta } from '../utils/pdfMetaExtract'
 
 interface Props { kbId: string; onDone?: () => void }
 
-type FileKind = 'pdf' | 'text' | null
+type FileKind = 'pdf' | 'text' | 'image' | null
+
+const IMAGE_TYPES = new Set(['image/png','image/jpeg','image/webp','image/gif','image/bmp','image/tiff'])
+const IMAGE_EXTS  = ['.png','.jpg','.jpeg','.webp','.gif','.bmp','.tiff']
+
+function isImageFile(f: File) {
+  return IMAGE_TYPES.has(f.type) || IMAGE_EXTS.some(e => f.name.toLowerCase().endsWith(e))
+}
 
 /** Extract title from the first # heading in markdown text */
 function mdTitle(text: string): string | undefined {
@@ -53,13 +60,15 @@ export default function Ingest({ kbId, onDone }: Props) {
   const pickFile = async (f: File) => {
     resetFields()
 
-    const isPdf = f.type === 'application/pdf' || f.name.endsWith('.pdf')
-    const isMd  = f.name.endsWith('.md') || f.name.endsWith('.txt') || f.type === 'text/markdown' || f.type === 'text/plain'
+    const isPdf  = f.type === 'application/pdf' || f.name.endsWith('.pdf')
+    const isMd   = f.name.endsWith('.md') || f.name.endsWith('.txt') || f.type === 'text/markdown' || f.type === 'text/plain'
+    const isImg  = isImageFile(f)
 
-    if (!isPdf && !isMd) return
+    if (!isPdf && !isMd && !isImg) return
 
     setFile(f)
-    setFileKind(isPdf ? 'pdf' : 'text')
+    const kind: FileKind = isPdf ? 'pdf' : isImg ? 'image' : 'text'
+    setFileKind(kind)
 
     if (isPdf) {
       setExtracting(true)
@@ -72,15 +81,28 @@ export default function Ingest({ kbId, onDone }: Props) {
         if (meta.astmCode)        setAstmCode(meta.astmCode)
         if (meta.journal)         setJournal(meta.journal)
         if (meta.abstract)        setAbstract(meta.abstract)
+
+        // Gemini-powered abstract cleanup (runs after regex pass)
+        if (meta.rawText) {
+          try {
+            const { abstract: aiAbstract } = await extractAbstract(
+              meta.rawText,
+              meta.sourceType === 'astm_standard',
+            )
+            if (aiAbstract) setAbstract(aiAbstract)
+          } catch { /* non-fatal — keep regex result */ }
+        }
       } catch { /* non-fatal */ }
       finally { setExtracting(false) }
-    } else {
-      // Read markdown / plain text
+    } else if (isMd) {
       const text = await f.text()
       setFileText(text)
       const t = mdTitle(text) ?? f.name.replace(/\.[^.]+$/, '')
       setTitle(t)
       setAbstract(mdAbstract(text))
+    } else {
+      // Image — pre-fill title from filename, leave other fields blank for user
+      setTitle(f.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' '))
     }
   }
 
@@ -104,7 +126,25 @@ export default function Ingest({ kbId, onDone }: Props) {
     setSubmitting(true); setError(''); setJob(null)
     try {
       let r: IngestJob
-      if (fileKind === 'pdf') {
+      if (fileKind === 'image') {
+        // Build a Markdown document from the image metadata.
+        // The actual image is referenced by filename; OCR will be added in a future step.
+        const mdText = [
+          `# ${title || file.name}`,
+          '',
+          `![${title || file.name}](${file.name})`,
+          '',
+          abstract ? `## Description\n${abstract}` : '',
+          doi      ? `## Source\n${doi}` : '',
+        ].filter(Boolean).join('\n')
+        r = await ingestText(kbId, mdText, {
+          title:    title  || file.name,
+          doi:      doi    || undefined,
+          year:     year   ? parseInt(year) : undefined,
+          pageUrl:  doi    || undefined,
+          abstract: abstract || undefined,
+        })
+      } else if (fileKind === 'pdf') {
         r = await ingestPdf(kbId, file, {
           title:    title  || file.name,
           authors:  authors ? authors.split(',').map(a => a.trim()).filter(Boolean) : [],
@@ -141,6 +181,7 @@ export default function Ingest({ kbId, onDone }: Props) {
 
   const isPdf  = fileKind === 'pdf'
   const isText = fileKind === 'text'
+  const isImg  = fileKind === 'image'
 
   return (
     <>
@@ -161,24 +202,28 @@ export default function Ingest({ kbId, onDone }: Props) {
             >
               {file ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 20 }}>{isPdf ? '📄' : '🌐'}</span>
+                  <span style={{ fontSize: 20 }}>
+                    {isPdf ? '📄' : isImg ? '🖼️' : '🌐'}
+                  </span>
                   <div>
                     <p style={{ fontWeight: 600, color: 'var(--text)', fontSize: 14 }}>{file.name}</p>
                     <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-                      {isPdf
-                        ? `${(file.size / 1024 / 1024).toFixed(2)} MB`
-                        : `${fileText.length.toLocaleString()} characters`}
+                      {isText
+                        ? `${fileText.length.toLocaleString()} characters`
+                        : `${(file.size / 1024 / 1024).toFixed(2)} MB`}
+                      {isImg && <span style={{ marginLeft: 8, color: '#478cd0' }}>· OCR coming soon</span>}
                       {extracting && <span style={{ marginLeft: 8, color: '#478cd0' }}>· Extracting metadata…</span>}
                     </p>
                   </div>
                 </div>
               ) : (
                 <>
-                  <p className="dropZoneText">Drop a PDF or Markdown file here, or click to browse</p>
-                  <p className="dropZoneHint">PDF · MD · TXT — metadata extracted automatically · PDF max 100 MB</p>
+                  <p className="dropZoneText">Drop a file here, or click to browse</p>
+                  <p className="dropZoneHint">PDF · MD · TXT · PNG · JPG · WEBP · GIF — metadata extracted automatically</p>
                 </>
               )}
-              <input id="ingest-file-input" type="file" accept=".pdf,.md,.txt,text/plain,text/markdown"
+              <input id="ingest-file-input" type="file"
+                accept=".pdf,.md,.txt,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tiff,text/plain,text/markdown,image/*"
                 style={{ display: 'none' }}
                 onChange={e => { const f = e.target.files?.[0]; if (f) pickFile(f) }} />
             </div>
@@ -188,7 +233,7 @@ export default function Ingest({ kbId, onDone }: Props) {
           <div className="presFieldRow">
             <div className="presFieldLabel">Title</div>
             <input className="presFieldInput" value={title} onChange={e => setTitle(e.target.value)}
-              placeholder={isText ? 'Page or article title' : 'Document title'} />
+              placeholder={isText ? 'Page or article title' : isImg ? 'Image title or caption' : 'Document title'} />
           </div>
 
           {/* ASTM designation — PDF only, only if detected or filled */}

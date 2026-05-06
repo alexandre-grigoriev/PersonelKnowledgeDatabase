@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createKb, deleteKb, resetKb, listKbs, queryKb } from './api/client'
+import { createKb, deleteKb, resetKb, listKbs, queryKb, getSettings, updateSettings } from './api/client'
 import type { Kb, ChatMessage } from './types'
 import { LANGS } from './constants'
 import { TopSelect } from './components/ui/TopSelect'
 import QueryPanel from './pages/Query'
 import Ingest from './pages/Ingest'
 import Archive from './pages/Archive'
+import Settings from './pages/Settings'
 import './App.css'
 
 // ─── Local data types ─────────────────────────────────────────────────────────
@@ -13,7 +14,7 @@ import './App.css'
 interface Chat    { id: string; title: string }
 interface Project { id: string; name: string; chats: Chat[] }
 
-type MainPage = 'chat' | 'ingest' | 'archive'
+type MainPage = 'chat' | 'ingest' | 'archive' | 'settings'
 
 function makeId() { return Math.random().toString(36).slice(2) + Date.now().toString(36) }
 function now()    { return new Date().toISOString() }
@@ -85,13 +86,13 @@ export default function App() {
       const saved = localStorage.getItem('skb_active_kb')
       if ((!activeKbId || !data.find(k => k.id === activeKbId)) && data.length > 0) {
         const id = (saved && data.find(k => k.id === saved)) ? saved : data[0].id
-        doSelectKb(id, data)
+        doSelectKb(id)
       }
     }), [activeKbId])
 
   useEffect(() => { loadKbs() }, [])
 
-  function doSelectKb(id: string, kbList?: Kb[]) {
+  function doSelectKb(id: string) {
     setActiveKbId(id)
     localStorage.setItem('skb_active_kb', id)
     setKbMenuOpen(false)
@@ -106,6 +107,30 @@ export default function App() {
       const defaultProject: Project = { id: makeId(), name: 'Default', chats: [] }
       return { ...prev, [id]: [defaultProject] }
     })
+  }
+
+  function clearKbHistory(kbId: string) {
+    setProjectsByKb(prev => {
+      const next = { ...prev }
+      delete next[kbId]
+      return next
+    })
+
+    setChatMessages(prev => {
+      const next = { ...prev }
+      const chatsToRemove = (projectsByKb[kbId] ?? []).flatMap(project => project.chats.map(chat => chat.id))
+      for (const chatId of chatsToRemove) {
+        delete next[chatId]
+      }
+      return next
+    })
+
+    if (activeKbId === kbId) {
+      setActiveChatId(null)
+      setActiveProjectId(null)
+      setMainPage('chat')
+      setInput('')
+    }
   }
 
   // ── Splitter drag (exact GD Depth) ──────────────────────────────────────────
@@ -228,17 +253,6 @@ export default function App() {
     }
   }, [input, isThinking, activeChatId, activeKbId, chatMessages])
 
-  // ── Delete active KB ─────────────────────────────────────────────────────────
-
-  async function handleDeleteKb() {
-    if (!activeKb || !confirm(`Delete "${activeKb.name}"? This cannot be undone.`)) return
-    setSettingsOpen(false)
-    await deleteKb(activeKb.id)
-    setActiveKbId('')
-    setProjectsByKb(prev => { const n = { ...prev }; delete n[activeKb.id]; return n })
-    loadKbs()
-  }
-
   // ── Derived ───────────────────────────────────────────────────────────────────
 
   const activeKb       = kbs.find(k => k.id === activeKbId) ?? null
@@ -259,24 +273,23 @@ export default function App() {
             <img className="brandHoriba" src="/screen logo Horiba.png" alt="HORIBA" />
           </div>
 
-          <span className="brandName">Lab AI</span>
+          <span className="brandName">Personal Knowledge Base</span>
 
           <div className="topRight">
             {/* Language selector */}
             <TopSelect imgSrc="/language.png" value={lang} options={LANGS} onChange={setLang} />
 
-            {/* KB list selector */}
+            {/* KB selector */}
             <div className="topSelectWrap" ref={kbMenuRef}>
               <button className="topSelectBtn" onClick={() => setKbMenuOpen(o => !o)}>
                 {activeKb && <span className="kbDot" style={{ background: activeKb.color }} />}
-                <span className="topSelectLabel">KB:</span>
-                <span className="topSelectValue">{activeKb?.name ?? 'None'}</span>
+                <span className="topSelectValue">{activeKb?.name ?? 'Select KB'}</span>
                 <svg className="topSelectChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="6 9 12 15 18 9"/>
                 </svg>
               </button>
               {kbMenuOpen && (
-                <div className="topSelectDropdown">
+                <div className="topSelectDropdown" style={{ right: 0, left: 'auto', minWidth: 200 }}>
                   {kbs.map(kb => (
                     <button key={kb.id}
                       className={`topSelectDropdownItem${kb.id === activeKbId ? ' topSelectDropdownItemActive' : ''}`}
@@ -296,21 +309,21 @@ export default function App() {
             <div className="topSelectWrap" ref={settingsRef}>
               <button className="iconBtn" onClick={() => setSettingsOpen(o => !o)} title="Knowledge base settings">
                 {/* Gear icon */}
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="3"/>
                   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
                 </svg>
               </button>
               {settingsOpen && (
                 <div className="topSelectDropdown" style={{ right: 0, left: 'auto', minWidth: 220 }}>
-                  <button className="topSelectDropdownItem" onClick={() => { setSettingsOpen(false); setShowCreate(true) }}>
-                    New…
-                  </button>
-                  <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '2px 0' }} />
                   <button className="topSelectDropdownItem"
-                    style={!activeKb ? { opacity: 0.4, pointerEvents: 'none' } : {}}
+                    style={!activeKb ? { opacity: 0.4, pointerEvents: 'none', fontWeight: 700 } : { fontWeight: 700 }}
                     onClick={() => { if (activeKb) { setSettingsOpen(false); setShowEdit(true) } }}>
                     Edit selected KB…
+                  </button>
+                  <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '2px 0' }} />
+                  <button className="topSelectDropdownItem" onClick={() => { setSettingsOpen(false); setShowCreate(true) }}>
+                    New…
                   </button>
                   <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '2px 0' }} />
                   <button className="topSelectDropdownItem"
@@ -477,6 +490,13 @@ export default function App() {
             </div>
             <div className="contentBody"><Archive kbId={activeKbId} /></div>
           </div>
+        ) : mainPage === 'settings' ? (
+          <div className="contentPanel">
+            <div className="contentHeader">
+              <div className="contentTitle">Settings</div>
+            </div>
+            <div className="contentBody"><Settings /></div>
+          </div>
         ) : (
           /* No chat selected — prompt to start one */
           <div className="chatCard">
@@ -490,14 +510,20 @@ export default function App() {
       </main>
 
       {/* ═══ FOOTER — exact GD Depth ════════════════════════════════════════ */}
-      <div className="footerNote">Lab AI — Scientific Knowledge Base — Powered by Gemini</div>
+      <div className="footerNote">Personal Knowledge Base — HORIBA FRANCE 2026 — Powered by AI</div>
 
       {/* Modals */}
       {showCreate && (
         <KbModal onClose={() => setShowCreate(false)} onDone={() => { loadKbs(); setShowCreate(false) }} />
       )}
       {showEdit && activeKb && (
-        <EditKbModal kb={activeKb} onClose={() => setShowEdit(false)} onDone={() => { loadKbs(); setShowEdit(false) }} />
+        <EditKbModal
+          kb={activeKb}
+          onClose={() => setShowEdit(false)}
+          onDone={() => { loadKbs(); setShowEdit(false) }}
+          onRefresh={loadKbs}
+          onReset={() => { clearKbHistory(activeKb.id) }}
+        />
       )}
     </div>
   )
@@ -527,7 +553,7 @@ function KbModal({ onClose, onDone }: { onClose: () => void; onDone: () => void 
 
   return (
     <div className="modalOverlay">
-      <div className="modalBackdrop" onClick={onClose} />
+      <div className="modalBackdrop" />
       <div className="modalCard">
         <div className="modalTitle">New Knowledge Base</div>
         <div className="modalSub">Create an isolated graph for a set of documents</div>
@@ -567,8 +593,18 @@ function KbModal({ onClose, onDone }: { onClose: () => void; onDone: () => void 
 // Tab order: Ingest | Documents | Settings
 // Settings tab contains: name/description/color + Reset KB + Delete KB
 
-function EditKbModal({ kb, onClose, onDone }: { kb: Kb; onClose: () => void; onDone: () => void }) {
-  const [tab, setTab] = useState<'ingest' | 'documents' | 'settings'>('ingest')
+function EditKbModal({ kb, onClose, onDone, onRefresh, onReset }: { kb: Kb; onClose: () => void; onDone: () => void; onRefresh: () => void; onReset?: () => void }) {
+  const [tab, setTab]           = useState<'ingest' | 'documents' | 'settings'>('ingest')
+  const [docCount, setDocCount] = useState(kb.docCount)
+  const [ingestKey, setIngestKey] = useState(0)
+
+  // Stay in sync when parent refreshes kb.docCount
+  useEffect(() => { setDocCount(kb.docCount) }, [kb.docCount])
+
+  const handleIngestDone = () => {
+    setIngestKey(k => k + 1)   // remounts <Ingest> → clears the form
+    onRefresh()                 // refresh KB list → kb.docCount updates → docCount syncs
+  }
 
   // Settings tab state
   const [name, setName]       = useState(kb.name)
@@ -576,6 +612,9 @@ function EditKbModal({ kb, onClose, onDone }: { kb: Kb; onClose: () => void; onD
   const [color, setColor]     = useState(kb.color)
   const [saving, setSaving]   = useState(false)
   const [saveError, setSaveError] = useState('')
+
+  const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash')
+  const [geminiEmbedModel, setGeminiEmbedModel] = useState('gemini-embedding-001')
 
   // Reset state (Astra Docs pattern)
   const [resetConfirm, setResetConfirm] = useState(false)
@@ -597,6 +636,7 @@ function EditKbModal({ kb, onClose, onDone }: { kb: Kb; onClose: () => void; onD
         body: JSON.stringify({ name: name.trim(), description: desc.trim(), color }),
       })
       if (!res.ok) throw new Error('Failed to update knowledge base')
+      await updateSettings({ geminiModel, geminiEmbedModel })
       onDone()
     } catch (err) {
       setSaveError((err as Error).message)
@@ -604,10 +644,25 @@ function EditKbModal({ kb, onClose, onDone }: { kb: Kb; onClose: () => void; onD
     }
   }
 
+  const loadSettings = async () => {
+    try {
+      const settings = await getSettings()
+      setGeminiModel(settings.geminiModel || 'gemini-2.5-flash')
+      setGeminiEmbedModel(settings.geminiEmbedModel || 'gemini-embedding-001')
+    } catch {
+      // ignore; user can still save via the modal
+    }
+  }
+
+  useEffect(() => {
+    loadSettings()
+  }, [])
+
   const doReset = async () => {
     setResetting(true)
     try {
       await resetKb(kb.id)
+      onReset?.()
       setResetDone(true)
       setResetConfirm(false)
       onDone() // refresh KB counts in parent
@@ -626,7 +681,7 @@ function EditKbModal({ kb, onClose, onDone }: { kb: Kb; onClose: () => void; onD
 
   return (
     <div className="modalOverlay">
-      <div className="modalBackdrop" onClick={onClose} />
+      <div className="modalBackdrop" />
       <div className="presModalWrap">
         <div className="presModal">
           {/* Close button */}
@@ -642,29 +697,27 @@ function EditKbModal({ kb, onClose, onDone }: { kb: Kb; onClose: () => void; onD
               <span className="kbDot" style={{ background: color, width: 14, height: 14 }} />
               {kb.name}
             </div>
-            <div className="presModalSubtitle">Ingest documents — browse archive — knowledge base settings</div>
+            <div className="presModalSubtitle">Ingest documents — Browse archive — Knowledge base settings</div>
           </div>
 
           {/* Tabs: Ingest | Documents | Settings */}
           <div className="kbTabs">
             <button className={`kbTab${tab === 'ingest'    ? ' kbTabActive' : ''}`} onClick={() => setTab('ingest')}>Ingest</button>
-            <button className={`kbTab${tab === 'documents' ? ' kbTabActive' : ''}`} onClick={() => setTab('documents')}>Documents</button>
+            <button className={`kbTab${tab === 'documents' ? ' kbTabActive' : ''}`} onClick={() => setTab('documents')}>
+              Documents{docCount > 0 ? ` (${docCount})` : ''}
+            </button>
             <button className={`kbTab${tab === 'settings'  ? ' kbTabActive' : ''}`} onClick={() => setTab('settings')}>Settings</button>
           </div>
 
-          {/* ── Ingest tab ── */}
-          {tab === 'ingest' && (
-            <div style={{ marginTop: 16 }}>
-              <Ingest kbId={kb.id} onDone={onDone} />
-            </div>
-          )}
+          {/* ── Ingest tab — always mounted to preserve job state across tab switches ── */}
+          <div style={{ marginTop: 16, display: tab === 'ingest' ? 'block' : 'none' }}>
+            <Ingest key={ingestKey} kbId={kb.id} onDone={handleIngestDone} />
+          </div>
 
-          {/* ── Documents tab (was Archive) ── */}
-          {tab === 'documents' && (
-            <div style={{ marginTop: 16 }}>
-              <Archive kbId={kb.id} />
-            </div>
-          )}
+          {/* ── Documents tab — always mounted to preserve scroll/search state ── */}
+          <div style={{ marginTop: 16, display: tab === 'documents' ? 'block' : 'none' }}>
+            <Archive kbId={kb.id} onDelete={onRefresh} refreshKey={ingestKey} />
+          </div>
 
           {/* ── Settings tab ── */}
           {tab === 'settings' && (
@@ -686,6 +739,23 @@ function EditKbModal({ kb, onClose, onDone }: { kb: Kb; onClose: () => void; onD
                       style={{ width: 40, height: 40, border: '1px solid var(--border)', borderRadius: 8, padding: 2, cursor: 'pointer' }} />
                     <span className="textSm textMuted">{color}</span>
                   </div>
+                </div>
+                <div className="presFieldRow">
+                  <div className="presFieldLabel">Gemini model</div>
+                  <select className="presFieldInput" value={geminiModel} onChange={e => setGeminiModel(e.target.value)}>
+                    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                    <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite</option>
+                    <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                    <option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
+                    <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
+                  </select>
+                </div>
+                <div className="presFieldRow">
+                  <div className="presFieldLabel">Embedding model</div>
+                  <select className="presFieldInput" value={geminiEmbedModel} onChange={e => setGeminiEmbedModel(e.target.value)}>
+                    <option value="gemini-embedding-001">Gemini Embedding 001</option>
+                    <option value="gemini-embedding-2">Gemini Embedding 2</option>
+                  </select>
                 </div>
                 {saveError && <div style={{ color: '#dc2626', fontSize: 13, marginTop: 8 }}>{saveError}</div>}
               </form>

@@ -27,6 +27,7 @@ export interface ArchivedDoc {
   doi: string | null
   year: number | null
   sourceType: string
+  abstract: string | null
   addedAt: string
   fileSizeBytes: number
   pageCount: number | null
@@ -67,4 +68,9 @@ export interface ChatMessage {
   timestamp:  string
   sources?:   QuerySource[]
   subQueries?: string[]
+}
+
+export interface Settings {
+  geminiModel: string
+  geminiEmbedModel: string
 }

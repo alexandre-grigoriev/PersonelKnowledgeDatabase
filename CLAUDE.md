@@ -8,7 +8,7 @@ An all-in-one desktop application (Mac + Windows) for managing multiple thematic
 |----------------|----------------------------------------------------------|
 | Desktop shell  | Electron 30+ (bundled Node.js + embedded Neo4j)          |
 | Backend API    | Node.js 20 / Express / CommonJS                          |
-| LLM            | Google Gemini 2.0 Flash (gemini-2.0-flash-exp)           |
+| LLM            | Google Gemini 2.5 Flash (gemini-2.5-flash)           |
 | Embeddings     | gemini-embedding-001 (3072 dimensions)                   |
 | Graph + Vector | Neo4j 5.x Community (one instance per KB)                |
 | PDF parsing    | pdf-parse + pdfplumber (Python subprocess)               |

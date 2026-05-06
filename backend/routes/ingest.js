@@ -23,6 +23,8 @@ const multer   = require('multer');
 
 const logger       = require('../utils/logger');
 const { getKbSqlitePath, getKbArchiveDir, DATA_DIR } = require('../utils/config');
+const { convertToMd } = require('../utils/pdfToMd');
+const { cleanupMd }  = require('../utils/mdCleaner');
 const { getDriver } = require('../utils/neo4jClient');
 
 const pdfParser   = require('../ingestion/pdfParser');
@@ -108,6 +110,7 @@ function archivePdf(kbId, tmpPath, sha256, meta) {
     year:           meta.year   || null,
     source_type:    meta.sourceType || 'publication',
     astm_code:      meta.astmCode || null,
+    abstract:       meta.abstract || null,
     added_at:       new Date().toISOString(),
     file_size_bytes: stat.size,
   };
@@ -271,6 +274,11 @@ router.post('/', upload.single('pdf'), async (req, res) => {
 
   res.status(202).json({ jobId, docId: sha256, status: 'queued', isDuplicate: false });
 
+  // Convert to MD then clean up encoding errors — both non-blocking and non-fatal
+  convertToMd(kbId, sha256, archiveResult.pdfPath)
+    .then(({ mdPath }) => cleanupMd(mdPath))
+    .catch(err => logger.warn({ err, sha256 }, 'ingest: pdf→md conversion/cleanup failed (non-fatal)'));
+
   // Run pipeline after response
   setImmediate(() => runPipeline(jobId, kbId, archiveResult.pdfPath, sha256, meta, db)
     .finally(() => db.close()));
@@ -303,7 +311,8 @@ router.post('/text', async (req, res) => {
     index.documents[sha256] = {
       sha256, title: meta.title || '', authors: meta.authors || [],
       doi: meta.doi || null, year: meta.year || null,
-      source_type: 'web_capture', added_at: new Date().toISOString(),
+      source_type: 'web_capture', abstract: meta.abstract || null,
+      added_at: new Date().toISOString(),
       page_url: meta.pageUrl || null,
     };
     writeArchiveIndex(kbId, index);
@@ -366,6 +375,43 @@ router.post('/text', async (req, res) => {
       db.close();
     }
   });
+});
+
+/**
+ * POST /api/ingest/extract-abstract
+ * Uses Gemini to extract and clean the abstract/scope from raw PDF text.
+ * Body: { text: string, isAstm?: boolean }
+ * Response: { abstract: string }
+ */
+router.post('/extract-abstract', async (req, res) => {
+  const { text, isAstm = false } = req.body || {};
+  if (!text) return res.status(400).json({ error: 'text is required' });
+
+  const docType = isAstm ? 'ASTM standard' : 'scientific publication';
+  const section = isAstm ? 'Scope section (section 1, starting at "1.1")' : 'Abstract section';
+
+  const prompt = `You are processing raw text extracted from a ${docType}.
+The text may have PDF extraction artefacts: words concatenated without spaces, superscripts embedded as words, hyphenated line-breaks, etc.
+
+Task: extract the ${section} and return it as one clean, properly spaced paragraph.
+Rules:
+- Fix all word-concatenation artefacts (e.g. "theprocess" → "the process")
+- Remove footnote markers, superscripts, and page numbers
+- Do NOT invent content — only use what is in the text
+- Return only the abstract/scope text, no label, no markdown, no commentary
+- Maximum 350 words
+
+Raw document text (first pages):
+${text.slice(0, 5000)}`;
+
+  try {
+    const { generateContent } = require('../utils/geminiClient');
+    const abstract = await generateContent(prompt);
+    res.json({ abstract: abstract.trim() });
+  } catch (err) {
+    logger.error({ err }, 'extract-abstract: Gemini call failed');
+    res.status(500).json({ error: 'Failed to generate abstract' });
+  }
 });
 
 /**

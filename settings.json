@@ -1,0 +1,4 @@
+{
+  "geminiModel": "gemini-2.5-flash",
+  "geminiEmbedModel": "gemini-embedding-001"
+}

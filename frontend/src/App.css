@@ -12,13 +12,8 @@
 /* ─── Base ───────────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 html, body, #root { height: 100%; }
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
+html { line-height: 1.5; -webkit-text-size-adjust: 100%; font-feature-settings: normal; font-variation-settings: normal; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
 
 /* ─── App root ───────────────────────────────────────────────────────────────── */
 .appRoot {
@@ -38,9 +33,11 @@ body {
   z-index: 20;
   background: #fff;
   border-bottom: 1px solid var(--border);
+  height: 88px;
 }
 .topBarInner {
   padding: 0 24px;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -53,16 +50,18 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+  align-self: stretch;
+  padding: 2px 0;
 }
-/* HORIBA logo — exact GD Depth sizing */
-.brandHoriba { height: auto; width: auto; margin-left: 5px; }
+/* HORIBA logo — fills full header height via 100% of stretched brandLeft */
+.brandHoriba { height: 100%; width: auto; margin-left: 5px; }
 
 /* Center brand name – absolutely centred, stretched horizontally */
 .brandName {
   font-size: 40px;
   position: absolute;
   left: 50%;
-  top: calc(50% - 1px);
+  top: 50%;
   transform: translateX(-50%) translateY(-50%) scaleX(1.3);
   font-weight: 900;
   color: #478cd0;
@@ -79,19 +78,20 @@ body {
   align-items: center;
   gap: 8px;
 }
+.topRight > .topSelectWrap:last-child { margin-left: 8px; }
 
 /* TopSelect-style dropdown (KB selector) */
 /* TopSelect — exact GD Depth */
 .topSelectWrap    { position: relative; }
-.topSelectBtn     { display: flex; align-items: center; gap: 8px; border: none; border-radius: 8px; padding: 8px 12px; background: #fff; font-size: 15px; color: #111827; cursor: pointer; }
+.topSelectBtn     { display: flex; align-items: center; gap: 8px; border: none; border-radius: 8px; padding: 8px 12px; background: #fff; font-size: 19px; color: #111827; cursor: pointer; }
 .topSelectBtn:hover { background: #f9fafb; }
-.topSelectImg     { width: 22px; height: 22px; object-fit: contain; }
-.topSelectIcon    { width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; color: #374151; background: #f7f8fa; border: 1px solid var(--border); }
-.topSelectLabel   { font-size: 15px; color: #6b7280; }
-.topSelectValue   { font-size: 15px; color: #111827; }
-.topSelectChevron { width: 16px; height: 16px; color: #6b7280; flex-shrink: 0; }
+.topSelectImg     { width: 26px; height: 26px; object-fit: contain; }
+.topSelectIcon    { width: 26px; height: 26px; border-radius: 999px; display: grid; place-items: center; color: #374151; background: #f7f8fa; border: 1px solid var(--border); }
+.topSelectLabel   { font-size: 19px; color: #6b7280; }
+.topSelectValue   { font-size: 19px; color: #111827; }
+.topSelectChevron { width: 20px; height: 20px; color: #6b7280; flex-shrink: 0; }
 .topSelectDropdown { position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; background: #fff; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.12); z-index: 10; overflow: hidden; }
-.topSelectDropdownItem { width: 100%; border: none; background: transparent; padding: 10px 12px; font-size: 15px; color: #111827; cursor: pointer; text-align: left; }
+.topSelectDropdownItem { width: 100%; border: none; background: transparent; padding: 10px 12px; font-size: 19px; color: #111827; cursor: pointer; text-align: left; }
 .topSelectDropdownItem:hover { background: #f3f4f6; }
 .topSelectDropdownItemActive { color: var(--orange); }
 /* KB dot used in the KB selector dropdown (kept for the KB dropdown in topRight) */
@@ -154,7 +154,7 @@ body {
   min-height: 0;
   background: #FFFFFF;
   border: 1px solid var(--border);
-  border-radius: 16px 16px 0 0;
+  border-radius: 16px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.06);
   overflow: hidden;
 }
@@ -287,7 +287,7 @@ body {
   overflow: hidden;
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 16px 16px 0 0;
+  border-radius: 16px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.06);
 }
 .chatHeader {
@@ -353,15 +353,57 @@ body {
 }
 
 /* Markdown inside assistant bubbles */
-.mdContent { font-size: 17px; line-height: 1.5; }
-.mdContent p { margin: 0 0 6px 0; }
+.mdContent { font-size: 17px; line-height: 1.7; }
+.mdContent p { margin: 0 0 12px 0; }
 .mdContent p:last-child { margin-bottom: 0; }
-.mdContent ul, .mdContent ol { margin: 4px 0 6px 1em; padding-left: 1em; }
-.mdContent li { margin-bottom: 3px; }
+.mdContent ul, .mdContent ol { margin: 4px 0 12px 1.2em; padding-left: 1em; }
+.mdContent li { margin-bottom: 6px; }
 .mdContent strong { font-weight: 700; }
 .mdContent em { font-style: italic; }
 .mdContent code { background: #f3f4f6; border-radius: 4px; padding: 1px 5px; font-size: 13px; }
-.mdContent pre { background: #f3f4f6; border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 6px 0; }
+.mdContent pre { background: #f3f4f6; border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 10px 0; }
+.mdContent img { max-width: 100%; border-radius: 8px; border: 1px solid var(--border); margin: 8px 0; display: block; }
+/* KaTeX formulas */
+.mdContent .katex-display { margin: 16px 0; overflow-x: auto; overflow-y: hidden; }
+.mdContent .katex { font-size: 1em; vertical-align: middle; }
+
+/* ─── Message images ──────────────────────────────────────────────────────────── */
+.msgImages { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+.msgImageFigure { display: flex; flex-direction: column; gap: 4px; width: fit-content; max-width: 60%; margin: 8px 0; }
+.msgImage { max-width: 100%; width: auto; height: auto; border-radius: 8px; border: 1px solid var(--border); cursor: zoom-in; display: block; }
+.msgImageCaption { font-size: 12px; color: #6b7280; text-align: center; font-style: italic; font-weight: 600; }
+
+/* ─── Image lightbox ──────────────────────────────────────────────────────────── */
+.imgLightbox { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.82); cursor: zoom-out; overflow: hidden; }
+.imgLightboxFigure { display: flex; flex-direction: column; align-items: center; gap: 10px; cursor: default; }
+.imgLightboxImg { max-width: 90vw; max-height: 85vh; border-radius: 10px; box-shadow: 0 8px 48px rgba(0,0,0,0.6); object-fit: contain; transition: transform 0.15s ease; user-select: none; }
+.imgLightboxCaption { color: rgba(255,255,255,0.85); font-size: 15px; font-style: italic; text-align: center; font-weight: 600; pointer-events: none; }
+
+.subQueriesRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.subQueryBtn {
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.subQueryBtn:hover {
+  background: #dbeafe;
+  transform: translateY(-1px);
+}
+.subQueryBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 
 /* Chat input row – pill shape */
 .chatInputRow {
@@ -396,6 +438,7 @@ body {
 }
 .chatInputIconBtn:hover { opacity: 0.7; }
 .chatInputIconBtn:disabled { opacity: 0.35; cursor: not-allowed; }
+.chatInputIcon { width: auto; height: auto; object-fit: contain; }
 
 /* Source cards under the answer */
 .sourcesBadge {
@@ -442,13 +485,7 @@ body {
 /* ═══════════════════════════════════════════════════════════════════════════════
    FOOTER  (exact GD Depth)
 ═══════════════════════════════════════════════════════════════════════════════ */
-.footerNote {
-  flex-shrink: 0;
-  font-size: 12px;
-  color: var(--muted);
-  text-align: center;
-  padding: 10px 0;
-}
+.footerNote { flex-shrink: 0; font-size: 16px; color: var(--muted); text-align: center; padding: 12px 0; }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    BUTTONS  (exact GD Depth)
@@ -640,7 +677,7 @@ body {
 .contentPanel {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 16px 16px 0 0;
+  border-radius: 16px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.06);
   display: flex;
   flex-direction: column;
@@ -685,3 +722,16 @@ body {
 .textSm { font-size: 13px; } .textXs { font-size: 11px; }
 .fontMedium { font-weight: 500; } .fontSemibold { font-weight: 600; } .fontBold { font-weight: 700; }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ─── Settings ───────────────────────────────────────────────────────────────── */
+.settingsSection { max-width: 600px; }
+.settingsSection h2 { font-size: 18px; font-weight: 600; margin-bottom: 20px; color: var(--text); }
+.settingItem { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.settingItem label { min-width: 120px; font-weight: 500; color: var(--text); }
+.settingItem select { flex: 1; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: white; font-size: 14px; }
+.settingItem select:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1); }
+.btn { padding: 8px 16px; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+.btnPrimary { background: var(--blue); color: white; }
+.btnPrimary:hover:not(:disabled) { background: #0d5cd7; }
+.btnPrimary:disabled { opacity: 0.6; cursor: not-allowed; }
+.error { color: #dc2626; font-size: 14px; margin-top: 8px; }

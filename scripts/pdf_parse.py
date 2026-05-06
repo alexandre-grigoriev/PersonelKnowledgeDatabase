@@ -109,6 +109,13 @@ def _extract_tables(page) -> list:
 
 
 def main():
+    # Ensure subprocess text streams are UTF-8 encoded on Windows.
+    # This prevents json.dump from failing when PDF text contains non-CP1252 characters.
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8')
+
     if len(sys.argv) < 2:
         print("Usage: pdf_parse.py <pdf_path>", file=sys.stderr)
         sys.exit(1)

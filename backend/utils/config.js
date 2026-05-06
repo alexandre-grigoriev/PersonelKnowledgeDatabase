@@ -24,11 +24,17 @@ const NEO4J_PORT_START = parseInt(process.env.SKB_NEO4J_PORT_START || '7687', 10
 const NEO4J_PORT_END = parseInt(process.env.SKB_NEO4J_PORT_END || '7787', 10);
 
 // PDF parsing Python script path
-const PDF_PARSER_SCRIPT = process.env.SKB_PDF_PARSER_SCRIPT || path.join(ROOT_DIR, 'scripts', 'pdf_parse.py');
+const PDF_PARSER_SCRIPT  = process.env.SKB_PDF_PARSER_SCRIPT  || path.join(ROOT_DIR, 'scripts', 'pdf_parse.py');
+const PDF_TO_MD_SCRIPT   = process.env.SKB_PDF_TO_MD_SCRIPT   || path.join(ROOT_DIR, 'scripts', 'pdf_to_md.py');
 
 // Archive directory (where PDF source of truth is stored)
 function getKbArchiveDir(kbId) {
   return path.join(DATA_DIR, kbId, 'pdfs');
+}
+
+// Uploads directory for a KB (converted MD + images, lives inside the KB folder)
+function getKbUploadsDir(kbId) {
+  return path.join(DATA_DIR, kbId, 'uploads');
 }
 
 // Neo4j data directory for a given KB
@@ -49,7 +55,9 @@ module.exports = {
   NEO4J_PORT_START,
   NEO4J_PORT_END,
   PDF_PARSER_SCRIPT,
+  PDF_TO_MD_SCRIPT,
   getKbArchiveDir,
+  getKbUploadsDir,
   getKbNeo4jDir,
   getKbSqlitePath,
 };

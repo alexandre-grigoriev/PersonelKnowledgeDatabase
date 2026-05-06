@@ -8,7 +8,7 @@ This file provides essential instructions and conventions for AI coding agents w
 ## Project Overview
 - **Desktop app** (Electron 30+, Node.js, Neo4j embedded)
 - **Backend**: Node.js 20, Express, CommonJS
-- **LLM**: Google Gemini 2.0 Flash (gemini-2.0-flash-exp)
+- **LLM**: Google Gemini 2.5 Flash (gemini-2.5-flash)
 - **Embeddings**: gemini-embedding-001 (3072d)
 - **Graph/Vector**: Neo4j 5.x Community (one instance per KB)
 - **PDF parsing**: Python subprocess (pdf-parse, pdfplumber)

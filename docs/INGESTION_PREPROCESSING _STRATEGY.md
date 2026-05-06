@@ -4,204 +4,202 @@
 Normalize all input sources into consistent, high-quality Markdown files suitable for indexing, retrieval, and RAG workflows.
 
 Each ingested item must produce:
-- One `.md` file
-- An abstract (generated if missing)
-- A dedicated image subfolder (if images exist)
-- Updated image references (if folder renamed)
+- One `content.md` file (Gemini-cleaned)
+- An abstract (auto-extracted then Gemini-improved)
+- A dedicated `images/` subfolder (if images exist)
+- Correct relative image references inside the Markdown
 - Metadata describing the source and processing
+
+---
+
+## Storage Layout
+
+```
+data/{kbId}/
+  pdfs/{sha256}.pdf          ← archive source of truth (never deleted on re-ingest)
+  uploads/{sha256}/
+    content.md               ← Gemini-cleaned Markdown
+    images/
+      fig_{page}_{n}.png     ← extracted figures (rendered, colour-corrected)
+  metadata.db                ← SQLite (documents, chunks, jobs)
+  neo4j/                     ← graph store
+  kb.json                    ← KB metadata (name, colour, counts)
+```
+
+`uploads/` is cleared and regenerated every time the document is re-ingested.
+When a document is deleted, its `uploads/{sha256}/` folder is removed alongside the PDF and graph nodes.
 
 ---
 
 ## Standard Markdown Structure
 
 ```md
----
-source_type: pdf | web | txt | image | screenshot | github | markdown
-source: "<original file path or URL>"
-created_at: "<ISO date>"
-image_folder: "<relative image folder>"
----
+# Section heading
 
-# Title
+Body paragraph text.
 
-## Abstract
-Short summary of the document content.
+![Figure 1](images/fig_2_1.png)
 
-## Content
-Converted or original Markdown content.
-
-## Images
-References to extracted or embedded images.
+## Sub-section
+...
 ```
+
+Image references are always **relative** to `content.md` so the backend image-serving route can resolve them.
 
 ---
 
 ## General Rules
 
-### Image Handling (Critical Rule)
+### Image Handling
 
-- All images must be stored in a dedicated subfolder
-- If an image folder is renamed:
-  - **ALL references in the Markdown MUST be updated accordingly**
-- Image paths must always be relative
+- Images are extracted page-by-page and stored in `images/fig_{page}_{globalIndex}.png`
+- The `images/` folder is **wiped before each conversion run** to avoid stale files from previous extractions
+- Images smaller than 60 × 60 px are discarded (decorative rules / icons)
+- Identical images (same MD5 hash) are deduplicated — repeated headers / logos appear only once
+- Image references inside `content.md` are rewritten to absolute API URLs by the frontend before rendering:
+  `images/fig_2_1.png` → `/api/kb/{kbId}/archive/{sha256}/images/fig_2_1.png`
+
+### Colorspace Correction
+
+PDFs may embed images in CMYK, grayscale-inverted, or JBIG2 mask format.
+To avoid colour inversion in the browser:
+- Images are extracted via `page.get_image_info(xrefs=True)` to obtain the bounding box on the page
+- Each image is rendered with `page.get_pixmap(clip=bbox, alpha=False)` — PyMuPDF renders it exactly as it appears visually, regardless of internal colorspace
+- Result is always saved as RGB or grayscale PNG
+
+### Font-Encoding Cleanup (Gemini post-processing)
+
+ASTM and some scientific PDFs use custom Symbol fonts. PyMuPDF maps glyphs to wrong Unicode codepoints:
+
+| Extracted | Correct |
+|-----------|---------|
+| `◆u` | `Δν` (wavenumber) |
+| `◆` | `Δ` (delta) |
+| `~` (before variable) | `(` |
+| `!` (after variable) | `)` |
+
+After `pdf_to_md.py` writes `content.md`, `backend/utils/mdCleaner.js`:
+1. Splits the file into ~3 000-character chunks at paragraph boundaries
+2. Sends each chunk to Gemini with an instruction to fix encoding errors while preserving Markdown structure and image references
+3. Writes the corrected content back to `content.md`
+
+This runs in the background (non-blocking, non-fatal). The ingestion job is already complete by then.
 
 ---
 
 ## 1. PDF Ingestion
 
-### Processing
-- Convert PDF to Markdown
-- Extract all images
-- Store images in a subfolder: `<document_name>_images/`
-- Insert image references in Markdown
-- Generate abstract if missing
+### Tools
+- **`scripts/pdf_to_md.py`** — PyMuPDF-based converter (image extraction + text)
+- **`backend/utils/pdfToMd.js`** — Node wrapper, runs the script via `child_process.execFile`
+- **`backend/utils/mdCleaner.js`** — Gemini post-processor for encoding cleanup
 
----
+### Pipeline
 
-## 2. Web Page Ingestion
-
-### Processing
-- Extract main content (remove navigation, ads, etc.)
-- Convert to Markdown
-- Download embedded images
-- Store images in a uniquely named folder
-
-### Folder Naming Strategy
-Use unique folder names to avoid collisions:
 ```
-<slug>_images/
-```
-or
-```
-images_<hash>/
-```
-- Generate abstract
-
----
-
-## 3. TXT Ingestion
-
-### Processing
-- Convert `.txt` to Markdown
-- Preserve structure (paragraphs, lists)
-- Generate abstract
-
----
-
-## 4. Screenshots / Images Ingestion
-
-### Processing
-- Run OCR to extract text
-- Convert to Markdown
-- Store original image in subfolder
-- Reference image in Markdown
-- Generate abstract
-
----
-
-## 5. Scanned PDF Handling
-
-### Processing
-- Detect if PDF is text-based or scanned
-- If scanned:
-  - Apply OCR
-- Extract images if possible
-- Store in subfolder
-- Generate abstract
-
----
-
-## 6. GitHub URL Ingestion
-
-### Processing
-- Keep full original URL
-- Generate abstract
-- Optionally extract visible content (README, file)
-- **Do not modify or shorten URL**
-
-### Example
-```md
----
-source_type: github
-source: "https://github.com/org/repo/blob/main/file.md"
----
-
-# GitHub Resource
-
-## Abstract
-Description of repository or file.
-
-## Source URL
-https://github.com/org/repo/blob/main/file.md
+User uploads PDF
+    ↓
+archivePdf()             copies to pdfs/{sha256}.pdf, updates index.json
+    ↓
+convertToMd()            runs pdf_to_md.py:
+                           • sorts page blocks top-to-bottom (reading order)
+                           • extracts text with heading detection (font size ratio)
+                           • extracts images via page.get_image_info + get_pixmap (RGB render)
+                           • writes uploads/{sha256}/content.md + images/
+    ↓
+cleanupMd()              Gemini fixes encoding errors in content.md (chunks of 3000 chars)
+    ↓
+runPipeline()            parse → chunk → enrich → embed → write to Neo4j + SQLite
 ```
 
+### Abstract extraction
+
+On the **frontend**, before submitting:
+1. `pdfMetaExtract.ts` reads first 3 pages with pdf.js and runs regex patterns (title, year, DOI, ASTM code, authors, abstract section)
+2. `POST /api/ingest/extract-abstract` sends the raw page text to Gemini → returns clean abstract sentence(s)
+   - For ASTM standards: targets the Scope section (section 1)
+   - For publications: targets the Abstract section
+
 ---
 
-## 7. Markdown (MD) File Handling
+## 2. Web Page / Text Ingestion
 
 ### Processing
-- Keep the Markdown file **as-is** (no content transformation)
-- Detect if there is an associated image folder
-- If needed:
-  - Rename the image folder to follow standard naming
-  - Example: `old_folder/` → `<document_name>_images/`
+- Text content sent as JSON body to `POST /api/ingest/text`
+- Stored as `{sha256}.txt` placeholder in the archive index (no PDF file)
+- No `uploads/` folder is created (no image extraction)
+- Abstract optionally provided by the user or extracted from the first paragraphs
 
-### Important Rule
-If the image folder is renamed:
-- **ALL image references inside the Markdown MUST be updated**
+---
+
+## 3. Image / Screenshot Ingestion
+
+### Processing
+- Frontend wraps image metadata in a Markdown stub:
+  ```md
+  # {title}
+  ![{title}]({filename})
+  ## Description
+  {abstract}
+  ```
+- Sent via `POST /api/ingest/text` as text content
+- OCR not yet implemented — description / abstract must be entered manually
+
+---
+
+## 4. Scanned PDF Handling
+
+Not yet implemented. Planned approach:
+- Detect scanned pages (no extractable text blocks)
+- Render each page as a high-DPI PNG using `page.get_pixmap()`
+- Apply OCR (Tesseract or Gemini Vision) to extract text
+- Proceed with standard chunking pipeline
+
+---
+
+## 5. Markdown File Handling
+
+### Processing
+- Content read directly (no transformation)
+- Sent via `POST /api/ingest/text` as text content
+- Title extracted from first `# heading`
+- Abstract extracted from first non-heading paragraphs
 
 ---
 
 ## Pipeline Overview
 
-### Step 1 — Detect Source Type
-- `pdf`
-- `web`
-- `txt`
-- `image` / `screenshot`
-- `github`
-- `markdown`
-
-### Step 2 — Extract Content
-- Use appropriate parser or OCR
-
-### Step 3 — Extract / Normalize Images
-- Extract or collect images
-- Place in subfolder
-- Rename folder if needed
-- Update references
-
-### Step 4 — Generate Abstract
-If missing:
-- 3–6 sentences
-- Include purpose, domain, key topics
-
-### Step 5 — Normalize Markdown
-- Clean formatting
-- Add metadata
-- Ensure structure consistency
-
-### Step 6 — Save Output
 ```
-output/
-  document.md
-  document_images/
-    image_001.png
-    image_002.png
+Step 1  Detect file type         pdf | md/txt | image → route to correct handler
+
+Step 2  Extract content          pdf_to_md.py (PyMuPDF) | f.text() | stub wrapper
+
+Step 3  Extract images           page.get_pixmap(clip, alpha=False) → images/fig_P_N.png
+        Deduplicate              MD5 hash comparison
+        Colour-correct           RGB render, discard < 60×60 px
+
+Step 4  Abstract                 regex (frontend) → Gemini cleanup → presFieldInput
+
+Step 5  Gemini encoding fix      mdCleaner.js chunks content.md → Gemini → rewrite
+
+Step 6  Ingestion pipeline       parse → chunk → enrich → embed → Neo4j + SQLite
+
+Step 7  Archive update           index.json + kb.json counts
 ```
 
 ---
 
 ## Acceptance Criteria
 
-A document is valid if:
+A document is valid after ingestion if:
 
-- [ ] Markdown file exists
-- [ ] Abstract is present
-- [ ] Source metadata is present
-- [ ] Images are stored locally (if applicable)
-- [ ] Image folder follows naming convention
-- [ ] Image references are correct and updated
-- [ ] GitHub URLs are preserved fully
-- [ ] OCR is applied when needed
-- [ ] Markdown structure is consistent
+- [x] PDF archived to `pdfs/{sha256}.pdf`
+- [x] `uploads/{sha256}/content.md` exists with clean encoding
+- [x] `uploads/{sha256}/images/` contains all figures ≥ 60×60 px, colour-correct
+- [x] Image references in `content.md` are relative (`images/fig_P_N.png`)
+- [x] Abstract is present in archive `index.json`
+- [x] Neo4j `Document` + `Chunk` nodes created with embeddings
+- [x] SQLite `documents` row has `status = 'done'`
+- [x] `kb.json` `doc_count` and `chunk_count` are updated
+- [ ] OCR applied for scanned PDFs *(planned)*
+- [ ] GitHub URL ingestion *(planned)*
