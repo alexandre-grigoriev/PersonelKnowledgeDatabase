@@ -117,8 +117,9 @@ export const extractAbstract = (text: string, isAstm: boolean) =>
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 export interface Settings {
-  geminiModel: string
+  geminiModel:      string
   geminiEmbedModel: string
+  geminiApiKey?:    string
 }
 
 export const getSettings = () => req<Settings>('/settings')

@@ -1,4 +1,5 @@
 {
   "geminiModel": "gemini-2.5-flash",
-  "geminiEmbedModel": "gemini-embedding-001"
+  "geminiEmbedModel": "gemini-embedding-001",
+  "geminiApiKey": "AIzaSyC-z6X3Dy2DwgFwb9fb6FHFqgkfYVEo86Q"
 }

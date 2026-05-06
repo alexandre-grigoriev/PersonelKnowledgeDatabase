@@ -47,8 +47,9 @@ export default function App() {
   )
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
   const [activeChatId, setActiveChatId]       = useState<string | null>(null)
-  const [renamingChatId, setRenamingChatId]   = useState<string | null>(null)
-  const [renameValue, setRenameValue]         = useState('')
+  const [renamingChatId, setRenamingChatId]       = useState<string | null>(null)
+  const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null)
+  const [renameValue, setRenameValue]             = useState('')
   const [creatingProject, setCreatingProject] = useState(false)
   const [newProjectName, setNewProjectName]   = useState('')
 
@@ -175,6 +176,16 @@ export default function App() {
   function doDeleteProject(projectId: string) {
     setProjectsByKb(prev => ({ ...prev, [activeKbId]: (prev[activeKbId] ?? []).filter(p => p.id !== projectId) }))
     if (activeProjectId === projectId) { setActiveProjectId(null); setActiveChatId(null) }
+  }
+
+  function doRenameProject(projectId: string, name: string) {
+    const t = name.trim()
+    if (!t) return
+    setProjectsByKb(prev => ({
+      ...prev,
+      [activeKbId]: (prev[activeKbId] ?? []).map(p => p.id === projectId ? { ...p, name: t } : p),
+    }))
+    setRenamingProjectId(null)
   }
 
   function doCreateChat(projectId: string) {
@@ -393,10 +404,26 @@ export default function App() {
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
                   </svg>
-                  <span className="projectName">{project.name}</span>
+                  {renamingProjectId === project.id ? (
+                    <input className="chatRenameInput" autoFocus value={renameValue}
+                      onChange={e => setRenameValue(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') doRenameProject(project.id, renameValue)
+                        if (e.key === 'Escape') setRenamingProjectId(null)
+                      }}
+                      onBlur={() => doRenameProject(project.id, renameValue)}
+                      onClick={e => e.stopPropagation()}
+                    />
+                  ) : (
+                    <span className="projectName">{project.name}</span>
+                  )}
                   <div className="projectActions" onClick={e => e.stopPropagation()}>
                     <button className="sidebarIconBtn" title="New chat" onClick={() => doCreateChat(project.id)}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                    </button>
+                    <button className="sidebarIconBtn" title="Rename project"
+                      onClick={() => { setRenamingProjectId(project.id); setRenameValue(project.name) }}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                     </button>
                     <button className="sidebarIconBtn sidebarIconBtnDanger" title="Delete project"
                       onClick={() => { if (confirm(`Delete project "${project.name}"?`)) doDeleteProject(project.id) }}>
@@ -594,7 +621,7 @@ function KbModal({ onClose, onDone }: { onClose: () => void; onDone: () => void 
 // Settings tab contains: name/description/color + Reset KB + Delete KB
 
 function EditKbModal({ kb, onClose, onDone, onRefresh, onReset }: { kb: Kb; onClose: () => void; onDone: () => void; onRefresh: () => void; onReset?: () => void }) {
-  const [tab, setTab]           = useState<'ingest' | 'documents' | 'settings'>('ingest')
+  const [tab, setTab]           = useState<'ingest' | 'documents' | 'settings' | 'models'>('ingest')
   const [docCount, setDocCount] = useState(kb.docCount)
   const [ingestKey, setIngestKey] = useState(0)
 
@@ -613,8 +640,12 @@ function EditKbModal({ kb, onClose, onDone, onRefresh, onReset }: { kb: Kb; onCl
   const [saving, setSaving]   = useState(false)
   const [saveError, setSaveError] = useState('')
 
-  const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash')
+  const [geminiModel, setGeminiModel]         = useState('gemini-2.5-flash')
   const [geminiEmbedModel, setGeminiEmbedModel] = useState('gemini-embedding-001')
+  const [geminiApiKey, setGeminiApiKey]         = useState('')
+  const [modelsSaved, setModelsSaved]           = useState(false)
+  const [modelsSaving, setModelsSaving]         = useState(false)
+  const [modelsError, setModelsError]           = useState('')
 
   // Reset state (Astra Docs pattern)
   const [resetConfirm, setResetConfirm] = useState(false)
@@ -636,11 +667,23 @@ function EditKbModal({ kb, onClose, onDone, onRefresh, onReset }: { kb: Kb; onCl
         body: JSON.stringify({ name: name.trim(), description: desc.trim(), color }),
       })
       if (!res.ok) throw new Error('Failed to update knowledge base')
-      await updateSettings({ geminiModel, geminiEmbedModel })
       onDone()
     } catch (err) {
       setSaveError((err as Error).message)
       setSaving(false)
+    }
+  }
+
+  const saveModels = async () => {
+    setModelsSaving(true); setModelsError(''); setModelsSaved(false)
+    try {
+      await updateSettings({ geminiModel, geminiEmbedModel, ...(geminiApiKey ? { geminiApiKey } : {}) })
+      setModelsSaved(true)
+      setTimeout(() => setModelsSaved(false), 2500)
+    } catch (err) {
+      setModelsError((err as Error).message)
+    } finally {
+      setModelsSaving(false)
     }
   }
 
@@ -649,14 +692,11 @@ function EditKbModal({ kb, onClose, onDone, onRefresh, onReset }: { kb: Kb; onCl
       const settings = await getSettings()
       setGeminiModel(settings.geminiModel || 'gemini-2.5-flash')
       setGeminiEmbedModel(settings.geminiEmbedModel || 'gemini-embedding-001')
-    } catch {
-      // ignore; user can still save via the modal
-    }
+      if (settings.geminiApiKey) setGeminiApiKey(settings.geminiApiKey)
+    } catch { /* ignore */ }
   }
 
-  useEffect(() => {
-    loadSettings()
-  }, [])
+  useEffect(() => { loadSettings() }, [])
 
   const doReset = async () => {
     setResetting(true)
@@ -700,13 +740,14 @@ function EditKbModal({ kb, onClose, onDone, onRefresh, onReset }: { kb: Kb; onCl
             <div className="presModalSubtitle">Ingest documents — Browse archive — Knowledge base settings</div>
           </div>
 
-          {/* Tabs: Ingest | Documents | Settings */}
+          {/* Tabs: Ingest | Documents | Settings | Models */}
           <div className="kbTabs">
             <button className={`kbTab${tab === 'ingest'    ? ' kbTabActive' : ''}`} onClick={() => setTab('ingest')}>Ingest</button>
             <button className={`kbTab${tab === 'documents' ? ' kbTabActive' : ''}`} onClick={() => setTab('documents')}>
               Documents{docCount > 0 ? ` (${docCount})` : ''}
             </button>
             <button className={`kbTab${tab === 'settings'  ? ' kbTabActive' : ''}`} onClick={() => setTab('settings')}>Settings</button>
+            <button className={`kbTab${tab === 'models'    ? ' kbTabActive' : ''}`} onClick={() => setTab('models')}>Models</button>
           </div>
 
           {/* ── Ingest tab — always mounted to preserve job state across tab switches ── */}
@@ -719,10 +760,9 @@ function EditKbModal({ kb, onClose, onDone, onRefresh, onReset }: { kb: Kb; onCl
             <Archive kbId={kb.id} onDelete={onRefresh} refreshKey={ingestKey} />
           </div>
 
-          {/* ── Settings tab ── */}
+          {/* ── Settings tab — KB metadata only ── */}
           {tab === 'settings' && (
             <>
-              {/* Name / Description / Color form */}
               <form onSubmit={saveSettings} className="presForm">
                 <div className="presFieldRow">
                   <div className="presFieldLabel">Name <span style={{ color: '#ef4444' }}>*</span></div>
@@ -739,23 +779,6 @@ function EditKbModal({ kb, onClose, onDone, onRefresh, onReset }: { kb: Kb; onCl
                       style={{ width: 40, height: 40, border: '1px solid var(--border)', borderRadius: 8, padding: 2, cursor: 'pointer' }} />
                     <span className="textSm textMuted">{color}</span>
                   </div>
-                </div>
-                <div className="presFieldRow">
-                  <div className="presFieldLabel">Gemini model</div>
-                  <select className="presFieldInput" value={geminiModel} onChange={e => setGeminiModel(e.target.value)}>
-                    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                    <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite</option>
-                    <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-                    <option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
-                    <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
-                  </select>
-                </div>
-                <div className="presFieldRow">
-                  <div className="presFieldLabel">Embedding model</div>
-                  <select className="presFieldInput" value={geminiEmbedModel} onChange={e => setGeminiEmbedModel(e.target.value)}>
-                    <option value="gemini-embedding-001">Gemini Embedding 001</option>
-                    <option value="gemini-embedding-2">Gemini Embedding 2</option>
-                  </select>
                 </div>
                 {saveError && <div style={{ color: '#dc2626', fontSize: 13, marginTop: 8 }}>{saveError}</div>}
               </form>
@@ -836,6 +859,47 @@ function EditKbModal({ kb, onClose, onDone, onRefresh, onReset }: { kb: Kb; onCl
                 )}
               </div>
             </>
+          )}
+
+          {/* ── Models tab ── */}
+          {tab === 'models' && (
+            <div className="presForm">
+              <div className="presFieldRow">
+                <div className="presFieldLabel">Google Gemini API Key</div>
+                <input
+                  className="presFieldInput"
+                  type="password"
+                  value={geminiApiKey}
+                  onChange={e => setGeminiApiKey(e.target.value)}
+                  placeholder="AIza… (leave blank to keep current)"
+                />
+              </div>
+              <div className="presFieldRow">
+                <div className="presFieldLabel">Gemini model</div>
+                <select className="presFieldInput" value={geminiModel} onChange={e => setGeminiModel(e.target.value)}>
+                  <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                  <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite</option>
+                  <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                  <option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
+                  <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
+                </select>
+              </div>
+              <div className="presFieldRow">
+                <div className="presFieldLabel">Embedding model</div>
+                <select className="presFieldInput" value={geminiEmbedModel} onChange={e => setGeminiEmbedModel(e.target.value)}>
+                  <option value="gemini-embedding-001">Gemini Embedding 001</option>
+                  <option value="text-embedding-004">Text Embedding 004</option>
+                  <option value="gemini-embedding-exp-03-07">Gemini Embedding Exp 03-07</option>
+                </select>
+              </div>
+              {modelsError && <div style={{ color: '#dc2626', fontSize: 13, marginBottom: 8 }}>{modelsError}</div>}
+              {modelsSaved && <div style={{ color: '#16a34a', fontSize: 13, marginBottom: 8 }}>✓ Saved</div>}
+              <div className="presFooter">
+                <button className="presSubmitBtn" disabled={modelsSaving} onClick={saveModels}>
+                  {modelsSaving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </div>

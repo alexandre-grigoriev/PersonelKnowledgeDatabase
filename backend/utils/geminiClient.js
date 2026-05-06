@@ -8,7 +8,7 @@
 const fetch = require('node-fetch');
 const logger = require('./logger');
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+let GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_API_URL = process.env.GEMINI_API_URL || 'https://generativelanguage.googleapis.com/v1/models';
 const GEMINI_BETA_API_URL = process.env.GEMINI_BETA_API_URL || 'https://generativelanguage.googleapis.com/v1beta/models';
 
@@ -21,14 +21,15 @@ function loadModels() {
     const settingsPath = require('path').join(__dirname, '..', '..', 'settings.json');
     if (require('fs').existsSync(settingsPath)) {
       const settings = require(settingsPath);
-      GEMINI_MODEL = settings.geminiModel || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+      GEMINI_MODEL      = settings.geminiModel      || process.env.GEMINI_MODEL      || 'gemini-2.5-flash';
       GEMINI_EMBED_MODEL = settings.geminiEmbedModel || process.env.GEMINI_EMBED_MODEL || 'gemini-embedding-001';
+      if (settings.geminiApiKey) GEMINI_API_KEY = settings.geminiApiKey;
     } else {
-      GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+      GEMINI_MODEL      = process.env.GEMINI_MODEL      || 'gemini-2.5-flash';
       GEMINI_EMBED_MODEL = process.env.GEMINI_EMBED_MODEL || 'gemini-embedding-001';
     }
   } catch {
-    GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    GEMINI_MODEL      = process.env.GEMINI_MODEL      || 'gemini-2.5-flash';
     GEMINI_EMBED_MODEL = process.env.GEMINI_EMBED_MODEL || 'gemini-embedding-001';
   }
 }
@@ -98,7 +99,8 @@ async function _fetchGeminiWithFallbacks(urls, body) {
  */
 async function _generateContent(prompt) {
   const body = {
-    contents: [{ role: 'user', parts: [{ text: prompt }] }]
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: { maxOutputTokens: 8192 },
   };
 
   const urls = [

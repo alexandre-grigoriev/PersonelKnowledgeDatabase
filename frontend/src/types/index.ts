@@ -71,6 +71,7 @@ export interface ChatMessage {
 }
 
 export interface Settings {
-  geminiModel: string
+  geminiModel:    string
   geminiEmbedModel: string
+  geminiApiKey?:  string
 }

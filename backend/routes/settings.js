@@ -15,8 +15,9 @@ const SETTINGS_FILE = path.join(__dirname, '..', '..', 'settings.json');
 
 // Default settings
 const DEFAULTS = {
-  geminiModel: 'gemini-2.5-flash',
+  geminiModel:      'gemini-2.5-flash',
   geminiEmbedModel: 'gemini-embedding-001',
+  geminiApiKey:     '',
 };
 
 // Load settings from file, or use defaults
